@@ -1,0 +1,49 @@
+{
+  "name": "pdmtool",
+  "productName": "PDM模型浏览器",
+  "version": "1.4.1",
+  "description": "PowerDesigner PDM 数据模型浏览工具 - 浏览、搜索、导出数据字典",
+  "main": "main.js",
+  "author": "PDMTOOL Studio",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.pdmtool.reader",
+    "productName": "PDM模型浏览器",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "resources/icon.ico",
+      "resources/icon.png"
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PDM模型浏览器",
+      "installerLanguages": ["zh_CN"],
+      "language": "2052"
+    }
+  }
+}

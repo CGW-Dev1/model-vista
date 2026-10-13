@@ -1,0 +1,590 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<o:Model xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:a="urn:schemas-microsoft-com:office:access" xmlns:c="urn:schemas-microsoft-com:office:custom" Id="o1">
+  <a:Name>电商业务系统</a:Name>
+  <a:Code>SHOP</a:Code>
+  <a:Comment>电商业务系统物理数据模型（测试样例）</a:Comment>
+  <a:Author>测试</a:Author>
+  <c:DBMS><o:Shortcut Id="dbms1"><a:Name>MySQL 5.7</a:Name></o:Shortcut></c:DBMS>
+  <c:Children>
+    <o:Package Id="pkg1">
+      <a:Name>用户模块</a:Name>
+      <a:Code>USER_MOD</a:Code>
+      <c:Children>
+    <o:Table Id="t1">
+      <a:Name>用户表</a:Name>
+      <a:Code>SYS_USER</a:Code>
+      <a:Comment>系统用户信息表</a:Comment>
+      <c:Columns>
+      <o:Column Id="c1">
+        <a:Name>用户ID</a:Name>
+        <a:Code>USER_ID</a:Code>
+        <a:Comment>主键，自增</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Identity>1</a:Identity>
+        <a:Sequence>1</a:Sequence>
+      </o:Column>
+      <o:Column Id="c2">
+        <a:Name>用户名</a:Name>
+        <a:Code>USERNAME</a:Code>
+        <a:Comment>登录账号，唯一</a:Comment>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>64</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>2</a:Sequence>
+      </o:Column>
+      <o:Column Id="c3">
+        <a:Name>密码</a:Name>
+        <a:Code>PASSWORD</a:Code>
+        <a:Comment>加密后的密码</a:Comment>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>128</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>3</a:Sequence>
+      </o:Column>
+      <o:Column Id="c4">
+        <a:Name>真实姓名</a:Name>
+        <a:Code>REAL_NAME</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>64</a:Length>
+        <a:Sequence>4</a:Sequence>
+      </o:Column>
+      <o:Column Id="c5">
+        <a:Name>手机号</a:Name>
+        <a:Code>PHONE</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>20</a:Length>
+        <a:Sequence>5</a:Sequence>
+      </o:Column>
+      <o:Column Id="c6">
+        <a:Name>邮箱</a:Name>
+        <a:Code>EMAIL</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>128</a:Length>
+        <a:Sequence>6</a:Sequence>
+      </o:Column>
+      <o:Column Id="c7">
+        <a:Name>状态</a:Name>
+        <a:Code>STATUS</a:Code>
+        <a:Comment>0-禁用 1-启用</a:Comment>
+        <a:DataType>SMALLINT</a:DataType>
+        <a:Length>2</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:DefaultValue>'1'</a:DefaultValue>
+        <a:Sequence>7</a:Sequence>
+      </o:Column>
+      <o:Column Id="c8">
+        <a:Name>创建时间</a:Name>
+        <a:Code>CREATE_TIME</a:Code>
+        <a:Comment>注册时间</a:Comment>
+        <a:DataType>DATETIME</a:DataType>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>8</a:Sequence>
+      </o:Column>
+      </c:Columns>
+      <c:Keys>
+        <o:Key Id="k1">
+          <a:Name>Keyk1</a:Name>
+          <c:Key.Columns>
+            <o:Column Ref="c1"/>
+          </c:Key.Columns>
+        </o:Key>
+      </c:Keys>
+      <c:PrimaryKey>
+        <o:Key Ref="k1"/>
+      </c:PrimaryKey>
+      <c:Indexes>
+        <o:Index Id="i1">
+          <a:Name>IDX_USER_NAME</a:Name>
+          <a:Code>UK_USER_USERNAME</a:Code>
+          <a:Unique>1</a:Unique>
+          <c:IndexColumns>
+            <o:IndexColumn Id="ic_i1_c2">
+              <a:SortOrder>ASC</a:SortOrder>
+              <c:Column><o:Column Ref="c2"/></c:Column>
+            </o:IndexColumn>
+          </c:IndexColumns>
+        </o:Index>
+      </c:Indexes>
+      <c:Triggers>
+        <o:Trigger Id="tg1">
+          <a:Name>触发-用户创建</a:Name>
+          <a:Code>TRG_USER_CREATE</a:Code>
+          <a:TriggerTiming>AFTER</a:TriggerTiming>
+          <a:TriggerEvent>INSERT</a:TriggerEvent>
+          <a:SQLText>INSERT INTO SYS_LOG(EVENT) VALUES('user created')</a:SQLText>
+        </o:Trigger>
+      </c:Triggers>
+    </o:Table>
+    <o:Table Id="t2">
+      <a:Name>角色表</a:Name>
+      <a:Code>SYS_ROLE</a:Code>
+      <a:Comment>系统角色定义</a:Comment>
+      <c:Columns>
+      <o:Column Id="c10">
+        <a:Name>角色ID</a:Name>
+        <a:Code>ROLE_ID</a:Code>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Identity>1</a:Identity>
+        <a:Sequence>1</a:Sequence>
+      </o:Column>
+      <o:Column Id="c11">
+        <a:Name>角色编码</a:Name>
+        <a:Code>ROLE_CODE</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>64</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>2</a:Sequence>
+      </o:Column>
+      <o:Column Id="c12">
+        <a:Name>角色名称</a:Name>
+        <a:Code>ROLE_NAME</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>128</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>3</a:Sequence>
+      </o:Column>
+      </c:Columns>
+      <c:Keys>
+        <o:Key Id="k2">
+          <a:Name>Keyk2</a:Name>
+          <c:Key.Columns>
+            <o:Column Ref="c10"/>
+          </c:Key.Columns>
+        </o:Key>
+      </c:Keys>
+      <c:PrimaryKey>
+        <o:Key Ref="k2"/>
+      </c:PrimaryKey>
+    </o:Table>
+    <o:Table Id="t3">
+      <a:Name>用户角色表</a:Name>
+      <a:Code>SYS_USER_ROLE</a:Code>
+      <a:Comment>用户与角色多对多关系</a:Comment>
+      <c:Columns>
+      <o:Column Id="c20">
+        <a:Name>主键ID</a:Name>
+        <a:Code>ID</a:Code>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Identity>1</a:Identity>
+        <a:Sequence>1</a:Sequence>
+      </o:Column>
+      <o:Column Id="c21">
+        <a:Name>用户ID</a:Name>
+        <a:Code>USER_ID</a:Code>
+        <a:Comment>引用用户表</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>2</a:Sequence>
+      </o:Column>
+      <o:Column Id="c22">
+        <a:Name>角色ID</a:Name>
+        <a:Code>ROLE_ID</a:Code>
+        <a:Comment>引用角色表</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>3</a:Sequence>
+      </o:Column>
+      </c:Columns>
+      <c:Keys>
+        <o:Key Id="k3">
+          <a:Name>Keyk3</a:Name>
+          <c:Key.Columns>
+            <o:Column Ref="c20"/>
+          </c:Key.Columns>
+        </o:Key>
+      </c:Keys>
+      <c:PrimaryKey>
+        <o:Key Ref="k3"/>
+      </c:PrimaryKey>
+    </o:Table>
+        <o:Reference Id="r1">
+    <a:Name>FK_USER_ROLE_USER</a:Name>
+    <a:Code>FK_USER_ROLE_USER</a:Code>
+    <c:ParentTable><o:Table Ref="t1"/></c:ParentTable>
+    <c:ChildTable><o:Table Ref="t3"/></c:ChildTable>
+    <c:Joins>
+      <o:ReferenceJoin Id="r1j">
+        <c:Object1Table><o:Column Ref="c1"/></c:Object1Table>
+        <c:Object2Table><o:Column Ref="c21"/></c:Object2Table>
+      </o:ReferenceJoin>
+    </c:Joins>
+  </o:Reference>
+        <o:Reference Id="r2">
+    <a:Name>FK_USER_ROLE_ROLE</a:Name>
+    <a:Code>FK_USER_ROLE_ROLE</a:Code>
+    <c:ParentTable><o:Table Ref="t2"/></c:ParentTable>
+    <c:ChildTable><o:Table Ref="t3"/></c:ChildTable>
+    <c:Joins>
+      <o:ReferenceJoin Id="r2j">
+        <c:Object1Table><o:Column Ref="c10"/></c:Object1Table>
+        <c:Object2Table><o:Column Ref="c22"/></c:Object2Table>
+      </o:ReferenceJoin>
+    </c:Joins>
+  </o:Reference>
+      </c:Children>
+    </o:Package>
+    <o:Package Id="pkg2">
+      <a:Name>订单模块</a:Name>
+      <a:Code>ORDER_MOD</a:Code>
+      <c:Children>
+    <o:Table Id="t4">
+      <a:Name>订单表</a:Name>
+      <a:Code>ORD_ORDER</a:Code>
+      <a:Comment>销售订单主表</a:Comment>
+      <c:Columns>
+      <o:Column Id="c30">
+        <a:Name>订单ID</a:Name>
+        <a:Code>ORDER_ID</a:Code>
+        <a:Comment>主键</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Identity>1</a:Identity>
+        <a:Sequence>1</a:Sequence>
+      </o:Column>
+      <o:Column Id="c31">
+        <a:Name>订单号</a:Name>
+        <a:Code>ORDER_NO</a:Code>
+        <a:Comment>业务订单号，规则：ORD+日期+序列</a:Comment>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>32</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>2</a:Sequence>
+      </o:Column>
+      <o:Column Id="c32">
+        <a:Name>用户ID</a:Name>
+        <a:Code>USER_ID</a:Code>
+        <a:Comment>下单用户</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>3</a:Sequence>
+      </o:Column>
+      <o:Column Id="c33">
+        <a:Name>订单金额</a:Name>
+        <a:Code>AMOUNT</a:Code>
+        <a:Comment>订单总金额</a:Comment>
+        <a:DataType>DECIMAL</a:DataType>
+        <a:Length>12</a:Length>
+        <a:Precision>2</a:Precision>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>4</a:Sequence>
+      </o:Column>
+      <o:Column Id="c34">
+        <a:Name>订单状态</a:Name>
+        <a:Code>STATUS</a:Code>
+        <a:Comment>0-待支付 1-已支付 2-已发货 3-已完成 4-已取消</a:Comment>
+        <a:DataType>SMALLINT</a:DataType>
+        <a:Length>2</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>5</a:Sequence>
+      </o:Column>
+      <o:Column Id="c35">
+        <a:Name>下单时间</a:Name>
+        <a:Code>CREATE_TIME</a:Code>
+        <a:DataType>DATETIME</a:DataType>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>6</a:Sequence>
+      </o:Column>
+      </c:Columns>
+      <c:Keys>
+        <o:Key Id="k4">
+          <a:Name>Keyk4</a:Name>
+          <c:Key.Columns>
+            <o:Column Ref="c30"/>
+          </c:Key.Columns>
+        </o:Key>
+      </c:Keys>
+      <c:PrimaryKey>
+        <o:Key Ref="k4"/>
+      </c:PrimaryKey>
+      <c:Indexes>
+        <o:Index Id="i2">
+          <a:Name>IDX_ORDER_USER</a:Name>
+          <a:Code>IDX_ORD_ORDER_USER</a:Code>
+          <c:IndexColumns>
+            <o:IndexColumn Id="ic_i2_c32">
+              <a:SortOrder>ASC</a:SortOrder>
+              <c:Column><o:Column Ref="c32"/></c:Column>
+            </o:IndexColumn>
+          </c:IndexColumns>
+        </o:Index>
+      </c:Indexes>
+      <c:Triggers>
+        <o:Trigger Id="tg2">
+          <a:Name>触发-订单创建</a:Name>
+          <a:Code>TRG_ORDER_CREATE</a:Code>
+          <a:TriggerTiming>AFTER</a:TriggerTiming>
+          <a:TriggerEvent>INSERT</a:TriggerEvent>
+          <a:SQLText>UPDATE SYS_STAT SET ORDER_COUNT = ORDER_COUNT + 1</a:SQLText>
+        </o:Trigger>
+      </c:Triggers>
+    </o:Table>
+    <o:Table Id="t5">
+      <a:Name>订单明细表</a:Name>
+      <a:Code>ORD_ORDER_ITEM</a:Code>
+      <a:Comment>订单商品明细</a:Comment>
+      <c:Columns>
+      <o:Column Id="c40">
+        <a:Name>明细ID</a:Name>
+        <a:Code>ITEM_ID</a:Code>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Identity>1</a:Identity>
+        <a:Sequence>1</a:Sequence>
+      </o:Column>
+      <o:Column Id="c41">
+        <a:Name>订单ID</a:Name>
+        <a:Code>ORDER_ID</a:Code>
+        <a:Comment>所属订单</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>2</a:Sequence>
+      </o:Column>
+      <o:Column Id="c42">
+        <a:Name>商品ID</a:Name>
+        <a:Code>PRODUCT_ID</a:Code>
+        <a:Comment>购买的商品</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>3</a:Sequence>
+      </o:Column>
+      <o:Column Id="c43">
+        <a:Name>数量</a:Name>
+        <a:Code>QTY</a:Code>
+        <a:DataType>INT</a:DataType>
+        <a:Length>10</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>4</a:Sequence>
+      </o:Column>
+      <o:Column Id="c44">
+        <a:Name>单价</a:Name>
+        <a:Code>PRICE</a:Code>
+        <a:Comment>成交单价</a:Comment>
+        <a:DataType>DECIMAL</a:DataType>
+        <a:Length>12</a:Length>
+        <a:Precision>2</a:Precision>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>5</a:Sequence>
+      </o:Column>
+      </c:Columns>
+      <c:Keys>
+        <o:Key Id="k5">
+          <a:Name>Keyk5</a:Name>
+          <c:Key.Columns>
+            <o:Column Ref="c40"/>
+          </c:Key.Columns>
+        </o:Key>
+      </c:Keys>
+      <c:PrimaryKey>
+        <o:Key Ref="k5"/>
+      </c:PrimaryKey>
+    </o:Table>
+    <o:View Id="v1">
+      <a:Name>订单明细视图</a:Name>
+      <a:Code>V_ORDER_DETAIL</a:Code>
+      <a:Comment>订单与商品汇总查询视图</a:Comment>
+      <c:Columns>
+        <o:ViewColumn Id="vc1"><a:Name>订单号</a:Name><a:Code>ORDER_NO</a:Code><a:Sequence>1</a:Sequence></o:ViewColumn>
+        <o:ViewColumn Id="vc2"><a:Name>用户名</a:Name><a:Code>USERNAME</a:Code><a:Sequence>2</a:Sequence></o:ViewColumn>
+        <o:ViewColumn Id="vc3"><a:Name>商品名称</a:Name><a:Code>PRODUCT_NAME</a:Code><a:Sequence>3</a:Sequence></o:ViewColumn>
+      </c:Columns>
+      <a:SQLText>SELECT o.ORDER_NO, u.USERNAME, i.QTY, i.PRICE, p.PRODUCT_NAME FROM ORD_ORDER o JOIN SYS_USER u ON o.USER_ID = u.USER_ID JOIN ORD_ORDER_ITEM i ON i.ORDER_ID = o.ORDER_ID JOIN PRD_PRODUCT p ON p.PRODUCT_ID = i.PRODUCT_ID</a:SQLText>
+    </o:View>
+        <o:Reference Id="r3">
+    <a:Name>FK_ORDER_USER</a:Name>
+    <a:Code>FK_ORDER_USER</a:Code>
+    <c:ParentTable><o:Table Ref="t1"/></c:ParentTable>
+    <c:ChildTable><o:Table Ref="t4"/></c:ChildTable>
+    <c:Joins>
+      <o:ReferenceJoin Id="r3j">
+        <c:Object1Table><o:Column Ref="c1"/></c:Object1Table>
+        <c:Object2Table><o:Column Ref="c32"/></c:Object2Table>
+      </o:ReferenceJoin>
+    </c:Joins>
+  </o:Reference>
+        <o:Reference Id="r4">
+    <a:Name>FK_ORDER_ITEM_ORDER</a:Name>
+    <a:Code>FK_ORDER_ITEM_ORDER</a:Code>
+    <c:ParentTable><o:Table Ref="t4"/></c:ParentTable>
+    <c:ChildTable><o:Table Ref="t5"/></c:ChildTable>
+    <c:Joins>
+      <o:ReferenceJoin Id="r4j">
+        <c:Object1Table><o:Column Ref="c30"/></c:Object1Table>
+        <c:Object2Table><o:Column Ref="c41"/></c:Object2Table>
+      </o:ReferenceJoin>
+    </c:Joins>
+  </o:Reference>
+      </c:Children>
+    </o:Package>
+    <o:Package Id="pkg3">
+      <a:Name>商品模块</a:Name>
+      <a:Code>PRD_MOD</a:Code>
+      <c:Children>
+    <o:Table Id="t6">
+      <a:Name>商品表</a:Name>
+      <a:Code>PRD_PRODUCT</a:Code>
+      <a:Comment>在售商品信息</a:Comment>
+      <c:Columns>
+      <o:Column Id="c50">
+        <a:Name>商品ID</a:Name>
+        <a:Code>PRODUCT_ID</a:Code>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Identity>1</a:Identity>
+        <a:Sequence>1</a:Sequence>
+      </o:Column>
+      <o:Column Id="c51">
+        <a:Name>商品编码</a:Name>
+        <a:Code>PRODUCT_CODE</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>64</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>2</a:Sequence>
+      </o:Column>
+      <o:Column Id="c52">
+        <a:Name>商品名称</a:Name>
+        <a:Code>PRODUCT_NAME</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>256</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>3</a:Sequence>
+      </o:Column>
+      <o:Column Id="c53">
+        <a:Name>分类ID</a:Name>
+        <a:Code>CATEGORY_ID</a:Code>
+        <a:Comment>商品分类</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>4</a:Sequence>
+      </o:Column>
+      <o:Column Id="c54">
+        <a:Name>售价</a:Name>
+        <a:Code>PRICE</a:Code>
+        <a:DataType>DECIMAL</a:DataType>
+        <a:Length>12</a:Length>
+        <a:Precision>2</a:Precision>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>5</a:Sequence>
+      </o:Column>
+      <o:Column Id="c55">
+        <a:Name>库存</a:Name>
+        <a:Code>STOCK</a:Code>
+        <a:DataType>INT</a:DataType>
+        <a:Length>10</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:DefaultValue>0</a:DefaultValue>
+        <a:Sequence>6</a:Sequence>
+      </o:Column>
+      </c:Columns>
+      <c:Keys>
+        <o:Key Id="k6">
+          <a:Name>Keyk6</a:Name>
+          <c:Key.Columns>
+            <o:Column Ref="c50"/>
+          </c:Key.Columns>
+        </o:Key>
+      </c:Keys>
+      <c:PrimaryKey>
+        <o:Key Ref="k6"/>
+      </c:PrimaryKey>
+    </o:Table>
+    <o:Table Id="t7">
+      <a:Name>商品分类表</a:Name>
+      <a:Code>PRD_CATEGORY</a:Code>
+      <a:Comment>商品分类树</a:Comment>
+      <c:Columns>
+      <o:Column Id="c60">
+        <a:Name>分类ID</a:Name>
+        <a:Code>CATEGORY_ID</a:Code>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Identity>1</a:Identity>
+        <a:Sequence>1</a:Sequence>
+      </o:Column>
+      <o:Column Id="c61">
+        <a:Name>分类名称</a:Name>
+        <a:Code>CATEGORY_NAME</a:Code>
+        <a:DataType>VARCHAR</a:DataType>
+        <a:Length>128</a:Length>
+        <a:Column.Mandatory>1</a:Column.Mandatory>
+        <a:Sequence>2</a:Sequence>
+      </o:Column>
+      <o:Column Id="c62">
+        <a:Name>父分类ID</a:Name>
+        <a:Code>PARENT_ID</a:Code>
+        <a:Comment>上级分类，顶级为空</a:Comment>
+        <a:DataType>BIGINT</a:DataType>
+        <a:Length>19</a:Length>
+        <a:Sequence>3</a:Sequence>
+      </o:Column>
+      </c:Columns>
+      <c:Keys>
+        <o:Key Id="k7">
+          <a:Name>Keyk7</a:Name>
+          <c:Key.Columns>
+            <o:Column Ref="c60"/>
+          </c:Key.Columns>
+        </o:Key>
+      </c:Keys>
+      <c:PrimaryKey>
+        <o:Key Ref="k7"/>
+      </c:PrimaryKey>
+    </o:Table>
+        <o:Reference Id="r5">
+    <a:Name>FK_PRODUCT_CATEGORY</a:Name>
+    <a:Code>FK_PRODUCT_CATEGORY</a:Code>
+    <c:ParentTable><o:Table Ref="t7"/></c:ParentTable>
+    <c:ChildTable><o:Table Ref="t6"/></c:ChildTable>
+    <c:Joins>
+      <o:ReferenceJoin Id="r5j">
+        <c:Object1Table><o:Column Ref="c60"/></c:Object1Table>
+        <c:Object2Table><o:Column Ref="c53"/></c:Object2Table>
+      </o:ReferenceJoin>
+    </c:Joins>
+  </o:Reference>
+        <o:Reference Id="r6">
+    <a:Name>FK_ORDER_ITEM_PRODUCT</a:Name>
+    <a:Code>FK_ORDER_ITEM_PRODUCT</a:Code>
+    <c:ParentTable><o:Table Ref="t6"/></c:ParentTable>
+    <c:ChildTable><o:Table Ref="t5"/></c:ChildTable>
+    <c:Joins>
+      <o:ReferenceJoin Id="r6j">
+        <c:Object1Table><o:Column Ref="c50"/></c:Object1Table>
+        <c:Object2Table><o:Column Ref="c42"/></c:Object2Table>
+      </o:ReferenceJoin>
+    </c:Joins>
+  </o:Reference>
+      </c:Children>
+    </o:Package>
+    <o:Procedure Id="sp1">
+      <a:Name>计算订单金额</a:Name>
+      <a:Code>SP_CALC_ORDER_AMOUNT</a:Code>
+      <a:Comment>根据明细汇总订单金额</a:Comment>
+      <a:SQLText>CREATE PROCEDURE SP_CALC_ORDER_AMOUNT(p_order_id BIGINT) BEGIN SELECT SUM(QTY*PRICE) INTO @amt FROM ORD_ORDER_ITEM WHERE ORDER_ID = p_order_id; UPDATE ORD_ORDER SET AMOUNT = @amt WHERE ORDER_ID = p_order_id; END</a:SQLText>
+    </o:Procedure>
+    <o:Sequence Id="sq1">
+      <a:Name>订单号序列</a:Name>
+      <a:Code>SEQ_ORDER_NO</a:Code>
+      <a:Comment>生成订单号后缀</a:Comment>
+      <a:StartValue>100000</a:StartValue>
+      <a:Increment>1</a:Increment>
+      <a:MinValue>1</a:MinValue>
+      <a:MaxValue>999999999</a:MaxValue>
+    </o:Sequence>
+  </c:Children>
+</o:Model>

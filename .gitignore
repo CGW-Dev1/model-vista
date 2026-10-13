@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Production build artifacts & installers
+dist/
+build/
+out/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# AI / IDE / Local workspace caches
+.workbuddy/
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.local
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

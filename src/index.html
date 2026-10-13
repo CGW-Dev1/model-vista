@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>PDM模型浏览器</title>
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="icon" href="../resources/icon.png" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- 顶部工具栏 -->
+    <header class="toolbar">
+      <div class="brand" title="PDM模型浏览器 - 数据库数据字典阅读工具">
+        <img class="brand-logo" src="../resources/icon.png" alt="logo" draggable="false" />
+        <span class="brand-name">PDM<em>模型浏览器</em></span>
+      </div>
+
+      <button class="btn btn-primary" id="btn-open" title="打开 PDM 文件 (Ctrl+O)">
+        <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+        打开文件
+      </button>
+
+      <div class="search-box" id="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14z"/></svg>
+        <input id="global-search" type="text" placeholder="全库搜索表、字段、注释…  (Ctrl+F)" autocomplete="off" spellcheck="false" />
+        <div class="search-results hidden" id="search-results">
+          <div class="sr-list" id="sr-list"></div>
+        </div>
+      </div>
+
+      <!-- 搜索选项（位于搜索框后方，状态持久化） -->
+      <div class="search-opts" id="search-opts">
+        <label class="sr-opt" title="在所有已打开的 PDM 中搜索，还是只在当前选中的模型里搜索">
+          <input type="checkbox" id="opt-scope-all" /> 搜索全部
+        </label>
+        <label class="sr-opt" title="搜索结果是否包含字段（勾选后同时匹配字段代码/名称/注释）">
+          <input type="checkbox" id="opt-include-cols" /> 包含字段
+        </label>
+      </div>
+
+      <div class="toolbar-right">
+        <button class="btn" id="btn-diff" title="对比两个模型的数据字典差异（新增/删除/修改的表与字段）">
+          <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/></svg>
+          对比
+        </button>
+        <button class="btn" id="btn-diagram" title="查看当前模型 / 当前表的关系图">
+          <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M22 11V3h-8v3H10V3H2v8h8V8h4v3h-2v4h-4v6h8v-6h-2v-4h8z"/></svg>
+          关系图
+        </button>
+        <div class="dropdown" id="export-dd">
+          <button class="btn" id="btn-export" title="导出数据字典">
+            <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            导出
+          </button>
+          <div class="dropdown-menu hidden" id="export-menu">
+            <a data-act="modal" data-fmt="batch" style="font-weight:600;color:var(--primary)">📋 批量/自定义勾选导出...</a>
+            <div class="dd-sep"></div>
+            <div class="dd-group-title">导出当前对象（表 / 视图）</div>
+            <a data-act="table" data-fmt="word">Word 文档 (.doc)</a>
+            <a data-act="table" data-fmt="excel">Excel 表格 (.xls)</a>
+            <a data-act="table" data-fmt="html">HTML 文件 (.html)</a>
+            <a data-act="table" data-fmt="markdown">Markdown (.md)</a>
+            <a data-act="table" data-fmt="csv">CSV 文件 (.csv)</a>
+            <a data-act="table" data-fmt="sql">建表 SQL (.sql)</a>
+            <div class="dd-sep"></div>
+            <div class="dd-group-title">导出整个模型</div>
+            <a data-act="model" data-fmt="html">交互式 HTML 数据字典 (.html)</a>
+            <a data-act="model" data-fmt="word">Word 数据字典 (.doc)</a>
+            <a data-act="model" data-fmt="excel">Excel 数据字典 (.xls)</a>
+            <a data-act="model" data-fmt="markdown">Markdown 数据字典 (.md)</a>
+            <a data-act="model" data-fmt="sql">全库建表脚本 (.sql)</a>
+          </div>
+        </div>
+        <button class="btn" id="btn-theme" title="切换深色/浅色主题">🌙</button>
+        <button class="btn" id="btn-about" title="关于">?</button>
+      </div>
+    </header>
+
+    <!-- 主体 -->
+    <div class="main">
+      <aside class="sidebar">
+        <!-- 侧栏顶部工具栏：搜索过滤、显示模式切换、包分组/平铺、展开折叠 -->
+        <div class="sidebar-header" id="sidebar-header">
+          <div class="sidebar-filter-row">
+            <div class="sidebar-search-box">
+              <svg class="sb-search-icon" viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14z"/></svg>
+              <input type="text" id="tree-filter" placeholder="过滤树节点 (代码/名称)..." autocomplete="off" spellcheck="false" />
+              <button class="sb-clear-btn hidden" id="tree-filter-clear" title="清空">×</button>
+            </div>
+            <button class="sb-icon-btn" id="btn-tree-expand-all" title="全部展开">
+              <svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M12 2l4 4h-3v5h-2V6H8l4-4zm0 20l-4-4h3v-5h2v5h3l-4 4z"/></svg>
+            </button>
+            <button class="sb-icon-btn" id="btn-tree-collapse-all" title="全部折叠">
+              <svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M12 8l4-4h-3V1h-2v3H8l4 4zm0 8l-4 4h3v3h2v-3h3l-4-4z"/></svg>
+            </button>
+          </div>
+          <div class="sidebar-config-row">
+            <div class="sb-config-item" title="切换树节点的显示方式（代码、名称、或两者兼备）">
+              <label for="tree-display-mode">显示：</label>
+              <select id="tree-display-mode" class="sb-select">
+                <option value="code-name">代码 (名称)</option>
+                <option value="name-code">名称 (代码)</option>
+                <option value="code-only">仅代码</option>
+                <option value="name-only">仅名称</option>
+              </select>
+            </div>
+            <div class="sb-config-item" title="按业务模块包分组，或平铺全部数据表">
+              <label for="tree-group-mode">分组：</label>
+              <select id="tree-group-mode" class="sb-select">
+                <option value="package">按模块包</option>
+                <option value="flat">平铺列表</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模型与对象树 -->
+        <div class="file-tabs" id="file-tabs"></div>
+      </aside>
+
+      <div class="resizer" id="sidebar-resizer" title="拖动调整宽度"></div>
+
+      <!-- 右侧多标签页工作区 -->
+      <section class="content-wrapper">
+        <div class="doc-tabs-bar" id="doc-tabs-bar">
+          <div class="doc-tabs" id="doc-tabs"></div>
+          <div class="doc-tabs-actions">
+            <button class="doc-tab-action-btn" id="btn-tab-close-other" title="关闭其他标签页">关闭其他</button>
+            <button class="doc-tab-action-btn" id="btn-tab-close-all" title="关闭全部标签页">关闭全部</button>
+          </div>
+        </div>
+        <div class="content" id="content"></div>
+      </section>
+    </div>
+
+    <!-- 重新加载提示条 -->
+    <div class="reload-bar hidden" id="reload-bar">
+      <span id="reload-msg"></span>
+      <button class="btn btn-mini" id="btn-reload">重新加载</button>
+      <button class="btn btn-mini" id="btn-ignore-reload">忽略</button>
+    </div>
+
+    <!-- 状态栏 -->
+    <footer class="statusbar">
+      <span id="status-left">就绪</span>
+      <span class="status-spacer"></span>
+      <span id="status-right"></span>
+    </footer>
+
+    <!-- 拖拽遮罩 -->
+    <div class="drop-mask hidden" id="drop-mask">
+      <div class="drop-box">松开鼠标打开 PDM 文件</div>
+    </div>
+
+    <!-- 全局提示 -->
+    <div class="toast hidden" id="toast"></div>
+
+    <!-- 批量导出模态弹窗 -->
+    <div class="modal-mask hidden" id="export-modal">
+      <div class="modal-box">
+        <div class="modal-header">
+          <div class="modal-title">数据字典导出向导</div>
+          <button class="modal-close" id="export-modal-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="em-section">
+            <div class="em-label">导出格式：</div>
+            <div class="em-formats">
+              <label class="em-fmt-radio"><input type="radio" name="export-fmt" value="html" checked> <span><b>交互式 HTML</b><small>单文件离线网页，内嵌搜索与树导航</small></span></label>
+              <label class="em-fmt-radio"><input type="radio" name="export-fmt" value="word"> <span><b>Word 文档 (.doc)</b><small>精美文档排版，含目录与表结构说明</small></span></label>
+              <label class="em-fmt-radio"><input type="radio" name="export-fmt" value="excel"> <span><b>Excel 表格 (.xls)</b><small>表目录清单 + 字段明细表</small></span></label>
+              <label class="em-fmt-radio"><input type="radio" name="export-fmt" value="markdown"> <span><b>Markdown (.md)</b><small>适合语雀/Notion/GitHub Wiki 导入</small></span></label>
+              <label class="em-fmt-radio"><input type="radio" name="export-fmt" value="sql"> <span><b>建表脚本 (.sql)</b><small>数据库建表 DDL 脚本</small></span></label>
+            </div>
+          </div>
+          <div class="em-section" id="em-dialect-row" style="display:none">
+            <div class="em-label">SQL 方言：</div>
+            <select id="export-sql-dialect" class="sel">
+              <option value="mysql">MySQL</option>
+              <option value="oracle">Oracle</option>
+              <option value="pg">PostgreSQL</option>
+              <option value="sqlserver">SQL Server</option>
+              <option value="dm">达梦 (DM)</option>
+            </select>
+          </div>
+          <div class="em-section em-tables-section">
+            <div class="em-tables-header">
+              <span class="em-label">选择要导出的数据表：</span>
+              <div class="em-tables-actions">
+                <button type="button" class="btn btn-mini" id="em-select-all">全选</button>
+                <button type="button" class="btn btn-mini" id="em-select-none">反选</button>
+                <span id="em-selected-count" style="font-size:11.5px;color:var(--text-3);margin-left:6px">已选 0 张</span>
+              </div>
+            </div>
+            <div class="em-search-row">
+              <input type="text" id="em-filter" placeholder="快速筛选待导出的表..." />
+            </div>
+            <div class="em-table-list" id="em-table-list"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" id="export-modal-cancel">取消</button>
+          <button class="btn btn-primary" id="export-modal-confirm">开始导出</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 标签页右键菜单 -->
+    <div class="context-menu hidden" id="tab-context-menu">
+      <div class="cm-item" data-action="close">关闭标签页</div>
+      <div class="cm-item" data-action="close-others">关闭其他标签页</div>
+      <div class="cm-item" data-action="close-right">关闭右侧标签页</div>
+      <div class="cm-sep"></div>
+      <div class="cm-item" data-action="close-all">关闭全部标签页</div>
+    </div>
+
+  </div>
+
+  <script src="js/pdm-parser.js"></script>
+  <script src="js/exporter.js"></script>
+  <script src="js/diff.js"></script>
+  <script src="js/diagram.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
