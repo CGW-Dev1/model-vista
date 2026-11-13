@@ -1,5 +1,5 @@
 /* ============================================================
- * PDM模型浏览器 - 主逻辑 (深度对标并超越码猴 PDMReader)
+ * ModelVista 模型视界 - 主逻辑
  * 支持多标签页浏览(MDI Tabs)、树显示模式自由切换、模块分组/平铺、
  * 树内即时过滤、精度标度展示、多数据库方言DDL、现代后端代码生成、
  * 批量自定义勾选导出与离线交互式HTML数据字典
@@ -16,9 +16,9 @@
     seq: 0,
     tabs: [],          // [{ id, modelId, kind, objId, title, subTitle, icon }]
     activeTabId: null,
-    treeDisplayMode: localStorage.getItem('pdmtool_tree_display_mode') || 'code-name',
-    treeGroupMode: localStorage.getItem('pdmtool_tree_group_mode') || 'package',
-    ddlDialect: localStorage.getItem('pdmtool_ddl_dialect') || 'mysql'
+    treeDisplayMode: localStorage.getItem('mv_tree_display_mode') || 'code-name',
+    treeGroupMode: localStorage.getItem('mv_tree_group_mode') || 'package',
+    ddlDialect: localStorage.getItem('mv_ddl_dialect') || 'mysql'
   };
 
   const $ = s => document.querySelector(s);
@@ -27,13 +27,48 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
 
+  /* 统一线性图标 */
+  const ICON_MAP = {
+    tables: 'table', views: 'view', references: 'link', procedures: 'cog',
+    sequences: 'hash', triggers: 'bolt', packages: 'box',
+    overview: 'database', table: 'table', diagram: 'network', diff: 'diff',
+    view: 'view', reference: 'link', procedure: 'cog', sequence: 'hash', trigger: 'bolt'
+  };
+  function iconSvg(name, cls) {
+    const id = ICON_MAP[name] || name || 'file';
+    return '<svg class="ic' + (cls ? ' ' + cls : '') + '"><use href="#i-' + id + '"/></svg>';
+  }
+
   function toast(msg, type) {
     const t = $('#toast');
     if (!t) return;
     t.textContent = msg;
     t.className = 'toast' + (type ? ' ' + type : '');
     clearTimeout(t._timer);
-    t._timer = setTimeout(() => t.classList.add('hidden'), 2600);
+    t._timer = setTimeout(() => t.classList.add('hidden'), 2800);
+  }
+
+  let loadingDepth = 0;
+  function showLoading(text) {
+    const m = $('#loading-mask');
+    if (!m) return;
+    loadingDepth++;
+    $('#loading-text').textContent = text || '正在处理…';
+    m.classList.remove('hidden');
+    setStatusDot('busy');
+  }
+  function hideLoading() {
+    loadingDepth = Math.max(0, loadingDepth - 1);
+    if (loadingDepth === 0) {
+      const m = $('#loading-mask');
+      if (m) m.classList.add('hidden');
+      setStatusDot('ok');
+    }
+  }
+  const nextPaint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+  function setStatusDot(state) {
+    const d = $('#st-dot');
+    if (d) d.className = 'st-dot' + (state ? ' ' + state : '');
   }
 
   const activeModel = () => state.models.find(m => m.id === state.activeId);
@@ -42,12 +77,17 @@
   function applyTheme(dark) {
     document.body.classList.toggle('dark', dark);
     const b = document.querySelector('#btn-theme');
-    if (b) b.textContent = dark ? '☀️' : '🌙';
-    try { localStorage.setItem('pdmtool_theme', dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
+    if (b) {
+      const use = b.querySelector('use');
+      if (use) use.setAttribute('href', dark ? '#i-sun' : '#i-moon');
+      b.title = dark ? '切换浅色主题' : '切换深色主题';
+    }
+    try { localStorage.setItem('mv_theme', dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
+    if (window.native && window.native.setThemeOverlay) window.native.setThemeOverlay(dark);
   }
 
   /* ---------------- 最近文件 ---------------- */
-  const RECENT_KEY = 'pdmtool_recent';
+  const RECENT_KEY = 'mv_recent';
   function getRecent() {
     try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
     catch (e) { return []; }
@@ -61,7 +101,7 @@
   }
 
   /* ---------------- 已打开文件持久化 ---------------- */
-  const OPEN_KEY = 'pdmtool_open_files';
+  const OPEN_KEY = 'mv_open_files';
   function syncOpenList() {
     const paths = state.models.map(m => m.path);
     try { localStorage.setItem(OPEN_KEY, JSON.stringify(paths)); } catch (e) { /* ignore */ }
@@ -95,12 +135,21 @@
   async function openPaths(paths) {
     let lastId = null;
     let cacheHits = 0;
-    for (const p of paths) {
+    let parseMs = 0;
+    let parseCount = 0;
+
+    /* 先并行读取缓存头部/内容，多文件恢复更快 */
+    const cacheResults = await Promise.all((paths || []).map(p =>
+      window.native.loadCache(p).catch(() => null)
+    ));
+
+    for (let idx = 0; idx < paths.length; idx++) {
+      const p = paths[idx];
       const exist = state.models.find(m => m.path === p);
       if (exist) { lastId = exist.id; continue; }
       try {
         let entry = null;
-        const cached = await window.native.loadCache(p);
+        const cached = cacheResults[idx];
         if (cached && cached.body) {
           const model = JSON.parse(cached.body);
           if (model && model.stats) {
@@ -114,10 +163,13 @@
           }
         }
         if (!entry) {
+          showLoading('正在解析 ' + p.split(/[\\/]/).pop() + ' …');
+          await nextPaint();
           const file = await window.native.readFile(p);
-          toast('正在解析 ' + file.name + '（' + fmtSize(file.size) + '）…');
-          await new Promise(r => setTimeout(r, 80));
+          const t0 = performance.now();
           const model = PDMParser.parse(file.content, file.name);
+          parseMs += performance.now() - t0;
+          parseCount++;
           if (model.stats.tables === 0 && model.stats.views === 0 && model.stats.references === 0) {
             toast('警告：' + file.name + ' 未识别到任何数据对象，可能是不支持的格式', 'err');
           }
@@ -127,12 +179,14 @@
             model
           };
           scheduleCacheSave(file.path, model);
+          hideLoading();
         }
         state.models.push(entry);
         window.native.watchFile(p);
         pushRecent(p);
         lastId = entry.id;
       } catch (err) {
+        hideLoading();
         console.error(err);
         toast('打开失败：' + p + ' — ' + err.message, 'err');
       }
@@ -143,7 +197,10 @@
       syncOpenList();
       renderTabs();
       openObject('overview');
-      if (cacheHits === paths.length) setStatus('已从缓存秒开 ' + cacheHits + ' 个模型');
+      const bits = [];
+      if (cacheHits) bits.push('缓存秒开 ' + cacheHits + ' 个');
+      if (parseCount) bits.push('解析 ' + parseCount + ' 个 · ' + Math.round(parseMs) + ' ms');
+      setStatus(bits.join(' · ') || '就绪');
     }
   }
 
@@ -191,6 +248,26 @@
     if (el) el.textContent = text || '';
   }
 
+  function updateWindowTitle() {
+    const m = activeModel();
+    if (!m) {
+      document.title = 'ModelVista 模型视界';
+      return;
+    }
+    const modelName = m.model.name || m.name;
+    let sub = '';
+    const cur = state.current;
+    if (cur && cur.kind === 'table') {
+      const t = findTable(m.model, cur.id);
+      if (t) sub = t.code + ' · ';
+    } else if (cur && cur.kind === 'diagram') {
+      sub = '关系图 · ';
+    } else if (cur && cur.kind === 'diff') {
+      sub = '模型对比 · ';
+    }
+    document.title = sub + modelName + ' — ModelVista';
+  }
+
   /* ---------------- 树节点文本格式化（对标 PDMReader 显示模式） ---------------- */
   function formatTreeLabel(code, name, isRef) {
     code = code || '';
@@ -220,7 +297,7 @@
     if (!box) return;
     box.innerHTML = '';
     if (!state.models.length) {
-      box.innerHTML = '<div class="file-tab-empty">尚未打开模型<br>点击上方“打开文件”或拖入 .pdm 文件</div>';
+      box.innerHTML = '<div class="file-tab-empty">' + iconSvg('database') + '尚未打开模型<br>点击“打开文件”或拖入 .pdm 文件</div>';
       setStatus('');
       renderDocTabs();
       return;
@@ -246,9 +323,9 @@
     subBits.push('表 ' + s.tables + (s.views ? ' · 视图 ' + s.views : ''));
     subBits.push(fmtSize(entry.size));
     row.innerHTML =
-      '<span class="tw" title="展开 / 折叠">▶</span>' +
+      '<span class="tw" title="展开 / 折叠">' + iconSvg('chevron') + '</span>' +
       '<div class="ft-main">' +
-      '<span class="name" title="' + esc(entry.path) + '">🗄 ' + esc(entry.name) + '</span>' +
+      '<span class="name" title="' + esc(entry.path) + '">' + iconSvg('database') + esc(entry.name) + '</span>' +
       '<span class="ft-sub">' + esc(subBits.join(' · ')) + '</span>' +
       '</div>' +
       '<span class="close" title="关闭">×</span>';
@@ -261,8 +338,8 @@
     if (expanded) buildFileChildren(children, entry);
 
     row.addEventListener('click', e => {
-      if (e.target.classList.contains('close')) { closeModel(entry.id); return; }
-      if (e.target.classList.contains('tw')) { toggleFileNode(node, entry); return; }
+      if (e.target.closest('.close')) { closeModel(entry.id); return; }
+      if (e.target.closest('.tw')) { toggleFileNode(node, entry); return; }
       if (state.activeId !== entry.id) {
         state.activeId = entry.id;
         if (!state.expanded.has(entry.id)) state.expanded.add(entry.id);
@@ -278,13 +355,13 @@
   function buildFileChildren(container, entry) {
     const model = entry.model;
     container.innerHTML = '';
-    container.appendChild(buildGroupNode(model, { key: 'tables', label: '表', icon: '▦', cls: 'ico-table', open: true }));
-    container.appendChild(buildGroupNode(model, { key: 'views', label: '视图', icon: '◫', cls: 'ico-view', open: true }));
+    container.appendChild(buildGroupNode(model, { key: 'tables', label: '表', icon: 'table', cls: 'ico-table', open: true }));
+    container.appendChild(buildGroupNode(model, { key: 'views', label: '视图', icon: 'view', cls: 'ico-view', open: true }));
     const more = [
-      { key: 'references', label: '外键关系', icon: '⇄', cls: 'ico-ref' },
-      { key: 'procedures', label: '存储过程', icon: '⚙', cls: 'ico-proc' },
-      { key: 'sequences', label: '序列', icon: '№', cls: 'ico-seq' },
-      { key: 'triggers', label: '触发器', icon: '⚡', cls: 'ico-trg' }
+      { key: 'references', label: '外键关系', icon: 'link', cls: 'ico-ref' },
+      { key: 'procedures', label: '存储过程', icon: 'cog', cls: 'ico-proc' },
+      { key: 'sequences', label: '序列', icon: 'hash', cls: 'ico-seq' },
+      { key: 'triggers', label: '触发器', icon: 'bolt', cls: 'ico-trg' }
     ].filter(g => collectGroupItems(model, g.key).length);
     if (more.length) container.appendChild(buildMoreNode(model, more));
     container._built = true;
@@ -306,7 +383,7 @@
     const count = groups.reduce((n, g) => n + collectGroupItems(model, g.key).length, 0);
     const row = document.createElement('div');
     row.className = 'tree-row';
-    row.innerHTML = '<span class="tw">▶</span><span class="ico ico-pkg">▸</span>' +
+    row.innerHTML = '<span class="tw">' + iconSvg('chevron') + '</span><span class="ico ico-more">' + iconSvg('box') + '</span>' +
       '<span class="label">其他对象</span><span class="count">' + count + '</span>';
     const children = document.createElement('div');
     children.className = 'tree-children collapsed';
@@ -327,8 +404,8 @@
     const expanded = !!g.open && items.length > 0;
     const row = document.createElement('div');
     row.className = 'tree-row' + (expanded ? ' expanded' : '');
-    row.innerHTML = (items.length ? '<span class="tw">▶</span>' : '<span class="tw" style="visibility:hidden">▶</span>') +
-      '<span class="ico ' + g.cls + '">' + g.icon + '</span>' +
+    row.innerHTML = (items.length ? '<span class="tw">' + iconSvg('chevron') + '</span>' : '<span class="tw" style="visibility:hidden">' + iconSvg('chevron') + '</span>') +
+      '<span class="ico ' + g.cls + '">' + iconSvg(g.icon) + '</span>' +
       '<span class="label">' + g.label + '</span>' +
       (items.length ? '<span class="count">' + items.length + '</span>' : '');
     node.appendChild(row);
@@ -344,7 +421,7 @@
     if (!isFlat && pkgGroups.multi) {
       let html = '';
       for (const pg of pkgGroups.groups) {
-        html += '<div class="tree-row"><span class="tw">▶</span><span class="ico ico-pkg">◱</span>' +
+        html += '<div class="tree-row"><span class="tw">' + iconSvg('chevron') + '</span><span class="ico ico-pkg">' + iconSvg('box') + '</span>' +
           '<span class="label" title="' + esc(pg.name) + '">' + esc(pg.name) + '</span>' +
           '<span class="count">' + pg.items.length + '</span></div>' +
           '<div class="tree-children collapsed">' +
@@ -392,8 +469,8 @@
     const isRef = g.key === 'references';
     const { main, sub } = formatTreeLabel(it.code, it.name, isRef);
     return '<div class="tree-row" data-open="' + g.key + ':' + it.id + '">' +
-      '<span class="tw" style="visibility:hidden">▶</span>' +
-      '<span class="ico ' + g.cls + '">' + g.icon + '</span>' +
+      '<span class="tw" style="visibility:hidden">' + iconSvg('chevron') + '</span>' +
+      '<span class="ico ' + g.cls + '">' + iconSvg(g.icon) + '</span>' +
       '<span class="label" title="' + esc(it.code + (it.name ? ' — ' + it.name : '') + (it.comment ? '\n' + it.comment : '')) + '">' +
       esc(main) +
       (sub ? ' <span style="color:var(--text-3);font-size:10.5px">' + esc(sub) + '</span>' : '') +
@@ -473,7 +550,7 @@
       dispSel.value = state.treeDisplayMode;
       dispSel.addEventListener('change', () => {
         state.treeDisplayMode = dispSel.value;
-        try { localStorage.setItem('pdmtool_tree_display_mode', dispSel.value); } catch (e) {}
+        try { localStorage.setItem('mv_tree_display_mode', dispSel.value); } catch (e) {}
         renderTabs();
         renderDocTabs();
       });
@@ -484,7 +561,7 @@
       grpSel.value = state.treeGroupMode;
       grpSel.addEventListener('change', () => {
         state.treeGroupMode = grpSel.value;
-        try { localStorage.setItem('pdmtool_tree_group_mode', grpSel.value); } catch (e) {}
+        try { localStorage.setItem('mv_tree_group_mode', grpSel.value); } catch (e) {}
         renderTabs();
       });
     }
@@ -504,7 +581,7 @@
     container.innerHTML = state.tabs.map(tab => {
       const active = tab.id === state.activeTabId ? ' active' : '';
       return `<div class="doc-tab${active}" data-doc-tab-id="${tab.id}" title="${esc(tab.subTitle || tab.title)}">
-        <span class="dt-ico">${tab.icon}</span>
+        <span class="dt-ico">${iconSvg(tab.icon)}</span>
         <span class="dt-title">${esc(tab.title)}</span>
         <span class="dt-close" title="关闭标签页 (Ctrl+W)">×</span>
       </div>`;
@@ -671,48 +748,48 @@
     if (m) {
       let tab = state.tabs.find(t => t.modelId === state.activeId && t.kind === kind && (id ? t.objId === id : true));
       if (!tab) {
-        let title = '', subTitle = '', icon = '▦';
+        let title = '', subTitle = '', icon = 'table';
         if (kind === 'overview') {
           title = m.model.name || m.name;
           subTitle = m.path;
-          icon = '🗄';
+          icon = 'overview';
         } else if (kind === 'diagram') {
           const targetTable = id ? findTable(m.model, id) : null;
           title = targetTable ? (targetTable.code + ' 关系图') : '模型关系图';
-          icon = '🕸';
+          icon = 'diagram';
         } else if (kind === 'diff') {
           title = '模型对比';
-          icon = '⇄';
+          icon = 'diff';
         } else if (kind === 'table') {
           const t = findTable(m.model, id);
           if (t) {
             const lbl = formatTreeLabel(t.code, t.name, false);
             title = lbl.main + (lbl.sub ? ` (${lbl.sub})` : '');
             subTitle = t.code + ' ' + (t.name || '') + (t.comment ? ' — ' + t.comment : '');
-            icon = '▦';
+            icon = 'table';
           } else {
             title = '数据表';
           }
         } else if (kind === 'views') {
           const v = findObject(m.model, 'views', id);
           title = v ? (v.code || v.name) : '视图';
-          icon = '◫';
+          icon = 'view';
         } else if (kind === 'references') {
           const r = findObject(m.model, 'references', id);
           title = r ? (r.code || r.name) : '外键关系';
-          icon = '⇄';
+          icon = 'reference';
         } else if (kind === 'procedures') {
           const p = findObject(m.model, 'procedures', id);
           title = p ? (p.code || p.name) : '存储过程';
-          icon = '⚙';
+          icon = 'procedure';
         } else if (kind === 'sequences') {
           const s = findObject(m.model, 'sequences', id);
           title = s ? (s.code || s.name) : '序列';
-          icon = '№';
+          icon = 'sequence';
         } else if (kind === 'triggers') {
           const trg = findObject(m.model, 'triggers', id);
           title = trg ? (trg.code || trg.name) : '触发器';
-          icon = '⚡';
+          icon = 'trigger';
         }
         tab = {
           id: 'tab_' + (++state.seq),
@@ -739,6 +816,7 @@
     if (!box) return;
     box.className = 'content';
     box.innerHTML = '';
+    updateWindowTitle();
     const m = activeModel();
     if (!m || !state.current) { renderWelcome(box); return; }
     const kind = state.current.kind, id = state.current.id;
@@ -758,30 +836,57 @@
   function renderWelcome(box) {
     const recents = getRecent();
     const recentHtml = recents.length ? (
-      '<div class="recent-list"><h3>最近打开</h3>' +
-      recents.map(p => {
+      '<div class="card recent-panel">' +
+      '<div class="recent-head"><svg class="ic" style="color:var(--text-3)"><use href="#i-refresh"/></svg>' +
+      '<h3>最近打开</h3><span class="rc-hint">双击列表快速继续上次的工作</span>' +
+      '<button class="btn btn-mini" id="wl-clear-recent">清空记录</button></div>' +
+      '<div class="recent-list">' + recents.map(p => {
         const base = p.split(/[\\/]/).pop();
-        return '<div class="recent-item" data-path="' + esc(p) + '">🗄 <span>' + esc(base) + '</span><span class="path">' + esc(p) + '</span></div>';
-      }).join('') + '</div>'
+        return '<div class="recent-item" data-path="' + esc(p) + '">' + iconSvg('file') +
+          '<span class="ri-name">' + esc(base) + '</span><span class="path" title="' + esc(p) + '">' + esc(p) + '</span>' +
+          '<span class="ri-del" data-del="' + esc(p) + '" title="从列表移除">×</span></div>';
+      }).join('') + '</div></div>'
     ) : '';
     box.innerHTML =
       '<div class="welcome">' +
       '<div class="wl-hero">' +
-      '<img src="../resources/icon.png" alt="logo" />' +
-      '<h1>PDM模型浏览器</h1>' +
-      '<p>浏览与检索 PowerDesigner 数据模型 · 极速搜索 · 强大数据字典导出 · ER 关系图</p>' +
-      '<div class="wl-actions"><button class="btn btn-primary" id="wl-open">打开 PDM 文件</button></div>' +
+      '<img class="wl-mark" src="../resources/icon.png" alt="ModelVista" />' +
+      '<div class="wl-eyebrow">PowerDesigner Model Studio</div>' +
+      '<h1>把每一个数据模型<br><span>看得更清楚</span></h1>' +
+      '<p>打开 PDM，秒搜表与字段，导出漂亮的数据字典。<br>ModelVista 让数据模型阅读变成一种享受。</p>' +
+      '<div class="wl-actions"><button class="btn btn-primary btn-lg" id="wl-open">' + iconSvg('folder') + ' 打开 PDM 文件</button>' +
+      '<button class="btn btn-lg" id="wl-help">' + iconSvg('keyboard') + ' 快捷键</button></div>' +
+      '<div class="wl-drop-hint">或将 <b>.pdm</b> 文件直接拖入窗口</div>' +
       '</div>' +
       '<div class="wl-grid">' +
-      '<div class="card wl-card" data-tip="search"><div class="wc-ico">🔎</div><div><h3>极速搜索</h3><p>输入关键字即时定位表、字段、注释，支持跨多个模型文件</p></div></div>' +
-      '<div class="card wl-card" data-tip="table"><div class="wc-ico">▦</div><div><h3>表结构查看</h3><p>字段精度、主键约束、索引、外键、触发器、多方言 DDL 一应俱全</p></div></div>' +
-      '<div class="card wl-card" data-tip="diagram"><div class="wc-ico">🕸</div><div><h3>ER 关系图</h3><p>可视化展示表间引用关系，可缩放平移、导出高清图片</p></div></div>' +
-      '<div class="card wl-card" data-tip="export"><div class="wc-ico">📤</div><div><h3>多格式导出</h3><p>交互式 HTML / Word / Excel / Markdown / CSV / 建表 SQL</p></div></div>' +
+      '<div class="card wl-card"><div class="wc-ico">' + iconSvg('search') + '</div><div><h3>极速搜索</h3><p>输入关键字即时定位表、字段与注释，支持跨多个模型文件</p></div></div>' +
+      '<div class="card wl-card"><div class="wc-ico">' + iconSvg('table') + '</div><div><h3>表结构查看</h3><p>字段精度、主键约束、索引、外键、触发器与多方言 DDL 一应俱全</p></div></div>' +
+      '<div class="card wl-card"><div class="wc-ico">' + iconSvg('network') + '</div><div><h3>ER 关系图</h3><p>可视化展示表间引用关系，支持缩放平移与高清图片导出</p></div></div>' +
+      '<div class="card wl-card"><div class="wc-ico">' + iconSvg('download') + '</div><div><h3>多格式导出</h3><p>交互式 HTML / Word / Excel / Markdown / CSV / SQL / PDF</p></div></div>' +
       '</div>' + recentHtml + '</div>';
 
     $('#wl-open').addEventListener('click', openDialog);
+    $('#wl-help').addEventListener('click', showAbout);
+    const clearBtn = $('#wl-clear-recent');
+    if (clearBtn) clearBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      localStorage.removeItem(RECENT_KEY);
+      window.native.clearRecents();
+      renderContent();
+      toast('最近文件记录已清除', 'ok');
+    });
     const rl = box.querySelector('.recent-list');
     if (rl) rl.addEventListener('click', e => {
+      const del = e.target.closest('.ri-del');
+      if (del) {
+        e.stopPropagation();
+        const p = del.dataset.del;
+        const list = getRecent().filter(x => x !== p);
+        localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+        window.native.removeRecent(p);
+        renderContent();
+        return;
+      }
       const item = e.target.closest('.recent-item');
       if (item) openPaths([item.dataset.path]);
     });
@@ -915,12 +1020,12 @@
     box.innerHTML =
       '<div class="obj-header">' +
       '<div class="oh-title-row">' +
-      '<span class="oh-icon">▦</span>' +
+      '<span class="oh-icon">' + iconSvg('table') + '</span>' +
       '<span class="oh-title">' + esc(table.code) + '</span>' +
       '<span class="oh-code">' + esc(table.name) + '</span>' +
       '<div class="oh-actions">' +
-      '<button class="btn btn-mini" data-act="copy-cols" title="复制所有字段名 (逗号分隔)">📋 复制全部字段</button>' +
-      '<button class="btn btn-mini" data-act="copy-cols-alias" title="复制带别名字段名 (如 t.USER_ID, ...)">📋 带别名复制</button>' +
+      '<button class="btn btn-mini" data-act="copy-cols" title="复制所有字段名 (逗号分隔)">' + iconSvg('copy') + ' 复制全部字段</button>' +
+      '<button class="btn btn-mini" data-act="copy-cols-alias" title="复制带别名字段名 (如 t.USER_ID, ...)">' + iconSvg('copy') + ' 带别名复制</button>' +
       '<button class="btn btn-mini" data-act="sql">生成 SQL</button>' +
       '<button class="btn btn-mini" data-act="er">关系图</button>' +
       '<button class="btn btn-mini" data-act="copy-sql">复制建表 SQL</button>' +
@@ -997,7 +1102,7 @@
       dialectSel.addEventListener('change', () => {
         curDialect = dialectSel.value;
         state.ddlDialect = curDialect;
-        try { localStorage.setItem('pdmtool_ddl_dialect', curDialect); } catch (e) {}
+        try { localStorage.setItem('mv_ddl_dialect', curDialect); } catch (e) {}
         ddl = Exporter.genTableSql(model, table, curDialect);
         const codeEl = box.querySelector('#ddl-code');
         if (codeEl) codeEl.innerHTML = sqlHighlight(ddl);
@@ -1068,7 +1173,7 @@
     ).join('');
     box.innerHTML =
       '<div class="obj-header"><div class="oh-title-row">' +
-      '<span class="oh-icon" style="color:#7c3aed">◫</span>' +
+      '<span class="oh-icon" style="color:#8b5cf6;background:#f4ecff">' + iconSvg('view') + '</span>' +
       '<span class="oh-title">' + esc(view.code) + '</span>' +
       '<span class="oh-code">' + esc(view.name) + '</span></div>' +
       (view.comment ? '<p class="oh-comment">' + esc(view.comment) + '</p>' : '') + '</div>' +
@@ -1093,7 +1198,7 @@
     }).join('');
     box.innerHTML =
       '<div class="obj-header"><div class="oh-title-row">' +
-      '<span class="oh-icon" style="color:var(--orange)">⇄</span>' +
+      '<span class="oh-icon" style="color:var(--orange);background:#fff2e5">' + iconSvg('link') + '</span>' +
       '<span class="oh-title">' + esc(ref.code || ref.name) + '</span>' +
       '<span class="oh-code">' + esc(ref.name || '') + '</span></div></div>' +
       '<div class="obj-body">' +
@@ -1115,7 +1220,7 @@
   function renderProcedure(box, p) {
     box.innerHTML =
       '<div class="obj-header"><div class="oh-title-row">' +
-      '<span class="oh-icon" style="color:#9a6700">⚙</span>' +
+      '<span class="oh-icon" style="color:#a16207;background:#fdf3da">' + iconSvg('cog') + '</span>' +
       '<span class="oh-title">' + esc(p.code || p.name) + '</span>' +
       '<span class="oh-code">' + esc(p.name || '') + '</span></div></div>' +
       '<div class="obj-body">' +
@@ -1125,7 +1230,7 @@
   function renderSequence(box, s) {
     box.innerHTML =
       '<div class="obj-header"><div class="oh-title-row">' +
-      '<span class="oh-icon" style="color:var(--green)">№</span>' +
+      '<span class="oh-icon" style="color:var(--green);background:#e6f7ef">' + iconSvg('hash') + '</span>' +
       '<span class="oh-title">' + esc(s.code || s.name) + '</span>' +
       '<span class="oh-code">' + esc(s.name || '') + '</span></div></div>' +
       '<div class="obj-body"><div class="card" style="max-width:480px"><table class="data-table">' +
@@ -1140,7 +1245,7 @@
   function renderTriggerTop(box, t) {
     box.innerHTML =
       '<div class="obj-header"><div class="oh-title-row">' +
-      '<span class="oh-icon" style="color:var(--red)">⚡</span>' +
+      '<span class="oh-icon" style="color:var(--red);background:#ffe9ea">' + iconSvg('bolt') + '</span>' +
       '<span class="oh-title">' + esc(t.code || t.name) + '</span>' +
       '<span class="oh-code">' + esc(t.name || '') + '</span></div></div>' +
       '<div class="obj-body">' +
@@ -1203,11 +1308,11 @@
     } else {
       if (r.added.length) {
         html += section('新增表（' + r.added.length + '）', r.added.map(t =>
-          '<div class="diff-line"><span class="mono">▦ ' + esc(t.code) + '</span><span>' + esc(t.name) + '</span><span class="col-comment">' + esc(t.comment || '') + '</span></div>').join(''));
+          '<div class="diff-line"><span class="mono">' + iconSvg('table') + ' ' + esc(t.code) + '</span><span>' + esc(t.name) + '</span><span class="col-comment">' + esc(t.comment || '') + '</span></div>').join(''));
       }
       if (r.removed.length) {
         html += section('删除表（' + r.removed.length + '）', r.removed.map(t =>
-          '<div class="diff-line"><span class="mono">▦ ' + esc(t.code) + '</span><span>' + esc(t.name) + '</span><span class="col-comment">' + esc(t.comment || '') + '</span></div>').join(''));
+          '<div class="diff-line"><span class="mono">' + iconSvg('table') + ' ' + esc(t.code) + '</span><span>' + esc(t.name) + '</span><span class="col-comment">' + esc(t.comment || '') + '</span></div>').join(''));
       }
       if (r.changed.length) {
         html += '<h3 style="font-size:13px;margin:16px 0 8px">变更表（' + r.changed.length + '）</h3>' +
@@ -1257,8 +1362,9 @@
   function doSearch(q) {
     const panel = $('#search-results');
     const list = $('#sr-list');
+    const summary = $('#sr-summary');
     q = q.trim();
-    if (!q) { panel.classList.add('hidden'); list.innerHTML = ''; panel._results = null; return; }
+    if (!q) { panel.classList.add('hidden'); list.innerHTML = ''; panel._results = null; if (summary) summary.textContent = ''; return; }
     const kw = q.toLowerCase();
     const scopeAll = document.getElementById('opt-scope-all').checked;
     const withCols = document.getElementById('opt-include-cols').checked;
@@ -1298,7 +1404,8 @@
     }
 
     if (!results.length) {
-      list.innerHTML = '<div class="search-empty">未找到匹配结果</div>';
+      list.innerHTML = '<div class="search-empty">未找到匹配结果，试试更短的关键词</div>';
+      if (summary) summary.textContent = '0 条';
     } else {
       const typeMap = { table: ['表', 't-table'], column: ['字段', 't-column'], view: ['视图', 't-view'], proc: ['过程', 't-proc'] };
       const rootNameOf = r => r.entry.model.name || r.entry.name;
@@ -1309,7 +1416,7 @@
         let loc = '';
         if (r.type === 'column') loc = '表 ' + r.tableCode;
         else if (r.type === 'table' && r.pkg && r.pkg !== rootNameOf(r)) loc = r.pkg;
-        return '<div class="search-result-item" data-i="' + i + '">' +
+        return '<div class="search-result-item' + (i === 0 ? ' active' : '') + '" data-i="' + i + '">' +
           '<div class="sr-row">' +
           '<span class="sr-badge ' + pair[1] + '">' + pair[0] + '</span>' +
           '<span class="sr-code">' + hl(r.code, q, re) + '</span>' +
@@ -1323,9 +1430,21 @@
         (results.length > SEARCH_RENDER_LIMIT
           ? '<div class="search-empty">共 ' + results.length + (truncated ? '+' : '') + ' 条结果，仅显示前 ' + SEARCH_RENDER_LIMIT + ' 条，请细化关键词</div>'
           : '');
+      if (summary) summary.textContent = '共 ' + results.length + (truncated ? '+' : '') + ' 条';
     }
     panel.classList.remove('hidden');
     panel._results = results;
+    panel._active = 0;
+  }
+
+  function setSearchActive(idx) {
+    const panel = $('#search-results');
+    const items = $$('#sr-list .search-result-item');
+    if (!items.length) return;
+    idx = Math.max(0, Math.min(idx, items.length - 1));
+    items.forEach((el, i) => el.classList.toggle('active', i === idx));
+    panel._active = idx;
+    items[idx].scrollIntoView({ block: 'nearest' });
   }
 
   function hlRegex(q) {
@@ -1424,13 +1543,31 @@
 
     const resizer = $('#sidebar-resizer');
     let resizing = false;
-    resizer.addEventListener('mousedown', () => { resizing = true; document.body.style.cursor = 'col-resize'; });
+    resizer.addEventListener('mousedown', () => { resizing = true; document.body.style.cursor = 'col-resize'; document.body.classList.add('resizing'); });
     window.addEventListener('mousemove', e => {
       if (!resizing) return;
-      const w = Math.min(Math.max(e.clientX, 200), window.innerWidth * 0.55);
+      const w = Math.min(Math.max(e.clientX, 220), window.innerWidth * 0.55);
       document.documentElement.style.setProperty('--sidebar-w', w + 'px');
     });
-    window.addEventListener('mouseup', () => { resizing = false; document.body.style.cursor = ''; });
+    window.addEventListener('mouseup', () => {
+      if (!resizing) return;
+      resizing = false;
+      document.body.style.cursor = '';
+      document.body.classList.remove('resizing');
+      try {
+        const w = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w'), 10);
+        if (w) localStorage.setItem('mv_sidebar_w', String(w));
+      } catch (e) { /* ignore */ }
+    });
+  }
+
+  function restoreSidebarWidth() {
+    try {
+      const w = parseInt(localStorage.getItem('mv_sidebar_w'), 10);
+      if (w && w >= 220 && w <= window.innerWidth * 0.55) {
+        document.documentElement.style.setProperty('--sidebar-w', w + 'px');
+      }
+    } catch (e) { /* ignore */ }
   }
 
   /* ---------------- 导出菜单 & 批量导出 ---------------- */
@@ -1479,7 +1616,9 @@
 
       try {
         let r;
-        if (act === 'model') {
+        if (fmt === 'pdf') {
+          r = await exportModelPdf(m.model);
+        } else if (act === 'model') {
           r = await Exporter.exportModel(m.model, fmt);
         } else {
           const target = currentExportTarget();
@@ -1487,10 +1626,34 @@
           r = await Exporter.exportTable(target.model, target.table, fmt);
         }
         if (r && r.ok) { toast('已导出：' + r.path, 'ok'); window.native.showInFolder(r.path); }
+        else if (r && r.canceled) { /* user canceled */ }
       } catch (err) { toast('导出失败：' + err.message, 'err'); }
     });
 
     bindExportModal();
+  }
+
+  async function exportTablePdf(model, table) {
+    showLoading('正在生成 PDF，请稍候…');
+    try {
+      const html = Exporter.tableToHtml(model, table);
+      const path = await window.native.exportPdf({ defaultName: Exporter.safeName(table.code || table.name) + '.pdf', html });
+      return path ? { ok: true, path } : { ok: false, canceled: true };
+    } finally {
+      hideLoading();
+    }
+  }
+
+  async function exportModelPdf(model, tableIds) {
+    showLoading('正在生成 PDF，请稍候…');
+    try {
+      const html = Exporter.modelToHtml(model, tableIds);
+      const base = Exporter.safeName(model.name || model.fileName.replace(/\.pdm$/i, ''));
+      const path = await window.native.exportPdf({ defaultName: base + '_数据字典.pdf', html });
+      return path ? { ok: true, path } : { ok: false, canceled: true };
+    } finally {
+      hideLoading();
+    }
   }
 
   function openExportModal(m) {
@@ -1588,7 +1751,9 @@
         modal.classList.add('hidden');
         toast(`正在导出 ${tableIds.length} 张表...`);
         try {
-          const r = await Exporter.exportModel(m.model, fmt, dialect, tableIds);
+          const r = fmt === 'pdf'
+            ? await exportModelPdf(m.model, tableIds)
+            : await Exporter.exportModel(m.model, fmt, dialect, tableIds);
           if (r && r.ok) {
             toast('数据字典已成功导出：' + r.path, 'ok');
             window.native.showInFolder(r.path);
@@ -1613,8 +1778,8 @@
           if (!m) { toast('请先打开 PDM 文件', 'err'); return; }
           const target = currentExportTarget();
           if (!target) { toast('请先选中要导出的表或视图', 'err'); return; }
-          Exporter.exportTable(target.model, target.table, arg).then(r => {
-            if (r.ok) { toast('已导出：' + r.path, 'ok'); window.native.showInFolder(r.path); }
+          (arg === 'pdf' ? exportTablePdf(target.model, target.table) : Exporter.exportTable(target.model, target.table, arg)).then(r => {
+            if (r && r.ok) { toast('已导出：' + r.path, 'ok'); window.native.showInFolder(r.path); }
           }).catch(err => toast('导出失败：' + err.message, 'err'));
           break;
         }
@@ -1649,12 +1814,10 @@
           renderTabs(); renderDocTabs(); renderContent();
           break;
         case 'menu:help':
-          toast('快捷键：Ctrl+O 打开文件 · Ctrl+F 搜索 · Ctrl+W 关闭标签页 · 可直接拖拽 .pdm 文件', '');
+          showAbout();
           break;
         case 'menu:about':
-          window.native.appInfo().then(info => {
-            toast('PDM模型浏览器 v' + info.version + ' — 专业级 PowerDesigner 数据模型阅读器', '');
-          });
+          showAbout();
           break;
         case 'menu:open-path':
           if (arg) openPaths([arg]);
@@ -1689,7 +1852,7 @@
   }
 
   /* ---------------- 搜索选项 ---------------- */
-  const OPTS_KEY = 'pdmtool_search_opts';
+  const OPTS_KEY = 'mv_search_opts';
   function getSavedSearchOpts() {
     try { return JSON.parse(localStorage.getItem(OPTS_KEY)); } catch (e) { return null; }
   }
@@ -1720,13 +1883,29 @@
     });
     input.addEventListener('focus', () => { if (input.value.trim()) doSearch(input.value); });
     input.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { panel.classList.add('hidden'); input.blur(); }
+      if (e.key === 'Escape') { panel.classList.add('hidden'); input.blur(); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (panel.classList.contains('hidden')) doSearch(input.value);
+        else setSearchActive((panel._active || 0) + 1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSearchActive((panel._active || 0) - 1);
+        return;
+      }
       if (e.key === 'Enter') {
         if (panel._results && panel._results.length) {
-          gotoResult(panel._results[0]);
+          const idx = panel._active || 0;
+          gotoResult(panel._results[idx] || panel._results[0]);
           panel.classList.add('hidden');
         }
       }
+    });
+    list.addEventListener('mousemove', e => {
+      const item = e.target.closest('.search-result-item');
+      if (item) setSearchActive(+item.dataset.i);
     });
     list.addEventListener('click', e => {
       const item = e.target.closest('.search-result-item');
@@ -1789,6 +1968,31 @@
     });
   }
 
+  /* ---------------- 关于 ---------------- */
+  function showAbout() {
+    const modal = $('#about-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    window.native.appInfo().then(info => {
+      const v = $('#about-version');
+      if (v) v.textContent = 'v' + info.version + ' · Electron ' + info.electron;
+      const sv = $('#sb-version');
+      if (sv) sv.textContent = 'v' + info.version;
+      const av = document.getElementById('about-version');
+      if (av) av.title = 'Chromium ' + info.chrome + ' / Node ' + info.node;
+    }).catch(() => {});
+  }
+
+  function bindAbout() {
+    const modal = $('#about-modal');
+    if (!modal) return;
+    const close = $('#about-close');
+    if (close) close.addEventListener('click', () => modal.classList.add('hidden'));
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+    const link = $('#about-github');
+    if (link) link.addEventListener('click', () => window.native.openExternal('https://github.com/CGW-Dev1/model-vista'));
+  }
+
   /* ---------------- 工具栏按钮 ---------------- */
   function bindToolbar() {
     $('#btn-open').addEventListener('click', openDialog);
@@ -1805,27 +2009,30 @@
       const t = (state.current && state.current.kind === 'table') ? findTable(m.model, state.current.id) : null;
       openDiagram(m, t);
     });
-    $('#btn-about').addEventListener('click', () => {
-      window.native.appInfo().then(info => {
-        toast('PDM模型浏览器 v' + info.version + ' — 极速 PowerDesigner 数据模型阅读器与数据字典生成工具', '');
-      });
-    });
+    $('#btn-about').addEventListener('click', showAbout);
   }
 
   /* ---------------- 启动 ---------------- */
   async function init() {
-    applyTheme(localStorage.getItem('pdmtool_theme') === 'dark');
+    applyTheme(localStorage.getItem('mv_theme') === 'dark');
     applySearchOpts();
+    restoreSidebarWidth();
     renderTabs();
     renderDocTabs();
     renderContent();
+
+    window.native.appInfo().then(info => {
+      const sv = $('#sb-version');
+      if (sv) sv.textContent = 'v' + info.version;
+      if (info.platform === 'win32') document.body.classList.add('platform-win32');
+    }).catch(() => {});
 
     const isE2EMode = new URLSearchParams(location.search).has('e2e');
     if (!isE2EMode) {
       const savedPaths = await getSavedOpenPaths();
       if (savedPaths && savedPaths.length) {
-        toast('正在恢复上次打开的 ' + savedPaths.length + ' 个模型…');
-        openPaths(savedPaths);
+        /* 让欢迎页先完成首帧绘制，再在后台恢复上次会话 */
+        requestAnimationFrame(() => { openPaths(savedPaths); });
       }
     }
     bindDelegates();
@@ -1838,6 +2045,7 @@
     bindDrop();
     bindKeys();
     bindToolbar();
+    bindAbout();
 
     window.App = {
       toast: toast,

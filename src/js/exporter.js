@@ -117,7 +117,7 @@
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
 ${wordStyle}</head><body>
 <h1>${esc(title)}</h1>
-<p class="meta">导出时间：${nowStr()}　|　数据字典阅读工具</p>
+<p class="meta">导出时间：${nowStr()}　|　ModelVista 模型视界</p>
 ${bodyHtml}
 </body></html>`;
   }

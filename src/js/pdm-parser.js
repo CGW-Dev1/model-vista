@@ -292,8 +292,11 @@
     const all = doc.getElementsByTagName('*');
     /* 根模型定位：兼容 PD16（直接 o:Model）与 PD12-15（Model > o:RootObject > c:Children > o:Model 三层包装） */
     const modelEls = [];
+    const idMap = Object.create(null);
     for (const el of all) {
       if (el.localName === 'Model') modelEls.push(el);
+      const id = el.getAttribute && el.getAttribute('Id');
+      if (id) idMap[id] = el;
     }
     const rootModel = modelEls.find(el => childOf(el, 'Name')) || modelEls[0];
     if (!rootModel) throw new Error('未找到 PowerDesigner 模型节点，请确认是 .pdm 文件（当前版本暂不支持 Navicat ndm2 等其他格式）：' + fileName);
@@ -308,15 +311,9 @@
       dbms: '',
       packages: [],   // 树形：{id,name,code,children:{tables,views,...}}
       tables: [], views: [], references: [], procedures: [], sequences: [], triggers: [],
-      idMap: {},      // id -> 浅信息（用于 Ref 解析）
+      idMap,          // id -> 元素（用于 Ref 解析，解析结束清空）
       parseMs: 0
     };
-
-    /* id 索引：所有带 Id 的元素（用于 Ref 解析） */
-    for (const el of all) {
-      const id = el.getAttribute && el.getAttribute('Id');
-      if (id) model.idMap[id] = el;
-    }
 
     /* DBMS：c:DBMS 下的 Shortcut/Name */
     const dbmsEl = childOf(rootModel, 'DBMS');
@@ -435,10 +432,11 @@
       legacy.triggers.forEach(el => { const tr = parseTriggerTop(el); rootPkg.triggers.push(tr); model.triggers.push(tr); });
     }
 
-    /* 外键关系双向登记 */
+    /* 外键关系双向登记（Map 查找，避免大模型 O(n²)） */
+    const tableById = new Map(model.tables.map(t => [t.id, t]));
     for (const r of model.references) {
-      const parent = model.tables.find(t => t.id === r.parentTableId);
-      const child = model.tables.find(t => t.id === r.childTableId);
+      const parent = tableById.get(r.parentTableId);
+      const child = tableById.get(r.childTableId);
       if (parent) parent.parentRefs = (parent.parentRefs || []).concat(r.id);   // 我被引用（我是父表）
       if (child) child.childRefs = (child.childRefs || []).concat(r.id);        // 我引用别人（我是子表）
     }

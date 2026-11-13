@@ -3,8 +3,38 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
+const APP_NAME = 'ModelVista';
+const START_TS = Date.now();
+const APP_ID = 'com.modelvista.app';
+
+app.setName(APP_NAME);
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+
+/* 用户数据目录：显式指定，避免中文产品名产生奇怪路径 */
+const userDataPath = path.join(app.getPath('appData'), APP_NAME);
+try { app.setPath('userData', userDataPath); } catch (e) { /* ignore */ }
+
+/* ---------- 从旧版本（PDM模型浏览器）平滑迁移设置与缓存 ---------- */
+function migrateLegacyData() {
+  try {
+    const legacy = path.join(app.getPath('appData'), 'PDM模型浏览器');
+    if (!fs.existsSync(legacy)) return;
+    const hasNew = ['recent.json', 'open-files.json'].some(f => fs.existsSync(path.join(userDataPath, f)));
+    if (hasNew) return;
+    fs.mkdirSync(userDataPath, { recursive: true });
+    for (const f of ['recent.json', 'open-files.json', 'window-state.json']) {
+      const src = path.join(legacy, f);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(userDataPath, f));
+    }
+    const legacyCache = path.join(legacy, 'pdm-cache');
+    if (fs.existsSync(legacyCache)) fs.cpSync(legacyCache, path.join(userDataPath, 'pdm-cache'), { recursive: true });
+  } catch (e) { /* ignore */ }
+}
+migrateLegacyData();
+
 let mainWindow = null;
 const watchedFiles = new Map(); // filePath -> watcher
+let pendingOpenPath = null;
 
 /* E2E/自动化验证场景禁用硬件加速与 GPU 合成，避免无 GPU 环境崩溃 */
 if (process.argv.includes('--e2e-test')) {
@@ -12,6 +42,7 @@ if (process.argv.includes('--e2e-test')) {
   app.commandLine.appendSwitch('disable-gpu');
   app.commandLine.appendSwitch('disable-gpu-compositing');
 }
+
 let recentFiles = [];
 
 /* ---------- 最近文件（主进程维护，供菜单使用） ---------- */
@@ -24,12 +55,12 @@ function persistRecents() {
   try { fs.writeFileSync(recentStorePath(), JSON.stringify(recentFiles), 'utf-8'); } catch (e) { /* ignore */ }
 }
 function addRecentPath(p) {
-  recentFiles = [p].concat(recentFiles.filter(x => x !== p)).slice(0, 10);
+  recentFiles = [p].concat(recentFiles.filter(x => x !== p)).slice(0, 12);
   persistRecents();
   buildMenu();
 }
 
-/* ---------- 已打开文件列表持久化（磁盘独立 JSON 存储，比 localStorage 更稳定可靠） ---------- */
+/* ---------- 已打开文件列表持久化 ---------- */
 function openFilesStorePath() { return path.join(app.getPath('userData'), 'open-files.json'); }
 function loadSavedOpenFiles() {
   try {
@@ -41,9 +72,7 @@ function loadSavedOpenFiles() {
   return [];
 }
 function saveOpenFiles(list) {
-  try {
-    fs.writeFileSync(openFilesStorePath(), JSON.stringify(list || []), 'utf-8');
-  } catch (e) { /* ignore */ }
+  try { fs.writeFileSync(openFilesStorePath(), JSON.stringify(list || []), 'utf-8'); } catch (e) { /* ignore */ }
 }
 
 /* ---------- 窗口状态记忆 ---------- */
@@ -52,23 +81,63 @@ function loadWinState() {
   try { return JSON.parse(fs.readFileSync(winStatePath(), 'utf-8')); }
   catch (e) { return null; }
 }
+function saveWinState() {
+  if (!mainWindow) return;
+  try {
+    fs.writeFileSync(winStatePath(), JSON.stringify({
+      bounds: mainWindow.getNormalBounds ? mainWindow.getNormalBounds() : mainWindow.getBounds(),
+      maximized: mainWindow.isMaximized()
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+/* ---------- 命令行 / 文件关联 ---------- */
+function findPdmArg(argv) {
+  const args = (argv || []).slice(1);
+  for (const a of args) {
+    if (!a || a.startsWith('-')) continue;
+    if (/\.(pdm|xml)$/i.test(a) && fs.existsSync(a)) return path.resolve(a);
+  }
+  return null;
+}
+
+function openPathFromOutside(p) {
+  if (!p) return;
+  if (!mainWindow) { pendingOpenPath = p; return; }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (mainWindow.webContents.isLoading()) pendingOpenPath = p;
+  else mainWindow.webContents.send('menu-action', { action: 'menu:open-path', arg: p });
+}
 
 function createWindow() {
   const isE2E = process.argv.includes('--e2e-test');
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const defaultW = Math.max(1024, Math.min(1400, workArea.width - 40));
+  const defaultH = Math.max(660, Math.min(880, workArea.height - 40));
   const winOpts = {
-    width: 1360,
-    height: 860,
-    minWidth: 980,
-    minHeight: 640,
+    width: defaultW,
+    height: defaultH,
+    x: Math.round(workArea.x + (workArea.width - defaultW) / 2),
+    y: Math.round(workArea.y + (workArea.height - defaultH) / 2),
+    minWidth: 1024,
+    minHeight: 660,
     show: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: process.platform === 'win32'
+      ? { color: '#ffffff', symbolColor: '#51617a', height: 50 }
+      : false,
+    autoHideMenuBar: true,
     icon: path.join(__dirname, 'resources', 'icon.ico'),
-    title: 'PDM模型浏览器',
-    backgroundColor: '#f5f7fb',
+    title: APP_NAME,
+    backgroundColor: '#f3f6fb',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      spellcheck: false
+      spellcheck: false,
+      v8CacheOptions: 'code'
     }
   };
   /* 恢复上次窗口位置与大小（校验后夹回可视区域） */
@@ -77,6 +146,8 @@ function createWindow() {
     try {
       const area = screen.getDisplayMatching(saved.bounds).workArea;
       const b = saved.bounds;
+      b.width = Math.min(b.width, area.width);
+      b.height = Math.min(b.height, area.height);
       b.x = Math.max(area.x, Math.min(b.x, area.x + area.width - b.width));
       b.y = Math.max(area.y, Math.min(b.y, area.y + area.height - b.height));
       winOpts.x = b.x; winOpts.y = b.y;
@@ -95,6 +166,14 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   }
 
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (saved && saved.maximized) mainWindow.maximize();
+    if (pendingOpenPath) {
+      const p = pendingOpenPath;
+      pendingOpenPath = null;
+      setTimeout(() => mainWindow.webContents.send('menu-action', { action: 'menu:open-path', arg: p }), 120);
+    }
+  });
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error('[load-fail]', code, desc, url);
   });
@@ -116,11 +195,12 @@ function createWindow() {
   if (isE2E) {
     setTimeout(() => { console.error('[E2E-TIMEOUT] 45s 未完成'); app.exit(2); }, 45000);
   }
-  mainWindow.once('ready-to-show', () => mainWindow.show());
-
-  mainWindow.on('close', () => {
-    try { fs.writeFileSync(winStatePath(), JSON.stringify({ bounds: mainWindow.getBounds() })); } catch (e) { /* ignore */ }
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    if (process.env.MV_TRACE_STARTUP) console.log('[startup] window shown at', Date.now() - START_TS, 'ms');
   });
+
+  mainWindow.on('close', saveWinState);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -131,11 +211,7 @@ function buildMenu() {
     {
       label: '文件',
       submenu: [
-        {
-          label: '打开 PDM 文件...',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => sendAction('menu:open-file')
-        },
+        { label: '打开 PDM 文件…', accelerator: 'CmdOrCtrl+O', click: () => sendAction('menu:open-file') },
         {
           label: '打开最近文件',
           submenu: [
@@ -166,19 +242,12 @@ function buildMenu() {
             { label: '导出为 HTML', click: () => sendAction('menu:export', 'html') },
             { label: '导出为 Markdown', click: () => sendAction('menu:export', 'markdown') },
             { label: '导出为 CSV', click: () => sendAction('menu:export', 'csv') },
-            { label: '导出为 PNG 图片', click: () => sendAction('menu:export', 'png') }
+            { label: '导出为 PDF', click: () => sendAction('menu:export', 'pdf') }
           ]
         },
-        {
-          label: '导出整个模型...',
-          click: () => sendAction('menu:export-all')
-        },
+        { label: '导出整个模型…', click: () => sendAction('menu:export-all') },
         { type: 'separator' },
-        {
-          label: '退出',
-          accelerator: 'Alt+F4',
-          role: 'quit'
-        }
+        { label: '退出', accelerator: 'Alt+F4', role: 'quit' }
       ]
     },
     {
@@ -205,7 +274,7 @@ function buildMenu() {
       label: '帮助',
       submenu: [
         { label: '使用说明', click: () => sendAction('menu:help') },
-        { label: '关于', click: () => sendAction('menu:about') }
+        { label: '关于 ModelVista', click: () => sendAction('menu:about') }
       ]
     }
   ];
@@ -232,6 +301,12 @@ ipcMain.handle('dialog:openPdm', async () => {
 });
 
 ipcMain.handle('recent:add', (_e, p) => { addRecentPath(p); return true; });
+ipcMain.handle('recent:remove', (_e, p) => {
+  recentFiles = recentFiles.filter(x => x !== p);
+  persistRecents();
+  buildMenu();
+  return true;
+});
 ipcMain.handle('recent:clear', () => {
   recentFiles = [];
   persistRecents();
@@ -304,10 +379,71 @@ ipcMain.handle('shell:showInFolder', async (_e, filePath) => {
   return true;
 });
 
+ipcMain.handle('shell:openExternal', async (_e, url) => {
+  try {
+    if (typeof url === 'string' && /^https:\/\//i.test(url)) await shell.openExternal(url);
+  } catch (e) { /* ignore */ }
+  return true;
+});
+
+/* PDF 导出：隐藏窗口渲染 HTML → printToPDF */
+ipcMain.handle('export:pdf', async (_e, { defaultName, html }) => {
+  if (!html) return null;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '保存 PDF 数据字典',
+    defaultPath: defaultName || '数据字典.pdf',
+    filters: [{ name: 'PDF 文档', extensions: ['pdf'] }]
+  });
+  if (result.canceled || !result.filePath) return null;
+  const printWin = new BrowserWindow({
+    show: false,
+    webPreferences: { offscreen: true, sandbox: true, javascript: false }
+  });
+  const tmpHtml = path.join(app.getPath('temp'), 'modelvista-print-' + Date.now() + '.html');
+  try {
+    fs.writeFileSync(tmpHtml, html, 'utf-8');
+    await printWin.loadFile(tmpHtml);
+    const pdf = await printWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      margins: { marginType: 'custom', top: 0.45, bottom: 0.45, left: 0.4, right: 0.4 }
+    });
+    fs.writeFileSync(result.filePath, pdf);
+    return result.filePath;
+  } finally {
+    if (!printWin.isDestroyed()) printWin.destroy();
+    try { fs.unlinkSync(tmpHtml); } catch (e) { /* ignore */ }
+  }
+});
+
+/* 无边框标题栏随主题换色 */
+ipcMain.on('theme:set', (_e, dark) => {
+  if (!mainWindow || process.platform !== 'win32') return;
+  try {
+    mainWindow.setTitleBarOverlay({
+      color: dark ? '#121a25' : '#ffffff',
+      symbolColor: dark ? '#c6d2e2' : '#51617a',
+      height: 50
+    });
+  } catch (err) { /* ignore */ }
+});
+
 ipcMain.handle('app:info', () => ({
+  name: APP_NAME,
   version: app.getVersion(),
-  platform: process.platform
+  platform: process.platform,
+  arch: process.arch,
+  electron: process.versions.electron,
+  chrome: process.versions.chrome,
+  node: process.versions.node
 }));
+
+ipcMain.handle('app:setTitle', (_e, title) => {
+  if (mainWindow && typeof title === 'string' && title) {
+    try { mainWindow.setTitle(title); } catch (e) { /* ignore */ }
+  }
+  return true;
+});
 
 /* ---------- PDM 解析缓存（启动秒开） ----------
  * 解析结果按文件路径哈希存到 userData/pdm-cache/*.json，
@@ -359,18 +495,40 @@ ipcMain.handle('cache:clear', () => {
   } catch (e) { return false; }
 });
 
-/* ---------------- lifecycle ---------------- */
+/* ---------------- 单实例 & lifecycle ---------------- */
 
-app.whenReady().then(() => {
-  loadRecents();
-  createWindow();
-  buildMenu();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const p = findPdmArg(argv);
+    if (p) openPathFromOutside(p);
+    else if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
-});
 
-app.on('window-all-closed', () => {
-  watchedFiles.forEach(w => { try { w.close(); } catch (e) {} });
-  if (process.platform !== 'darwin') app.quit();
-});
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    openPathFromOutside(filePath);
+  });
+
+  app.whenReady().then(() => {
+    loadRecents();
+    createWindow();
+    buildMenu();
+    const initial = findPdmArg(process.argv);
+    if (initial) pendingOpenPath = initial;
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    watchedFiles.forEach(w => { try { w.close(); } catch (e) {} });
+    if (process.platform !== 'darwin') app.quit();
+  });
+}

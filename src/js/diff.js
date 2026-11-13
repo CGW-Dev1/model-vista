@@ -82,7 +82,7 @@
     L.push('- 模型 A：' + nameA);
     L.push('- 模型 B：' + nameB);
     L.push('- 对比时间：' + p(Date.now()));
-    L.push('- 生成工具：PDM模型浏览器');
+    L.push('- 生成工具：ModelVista 模型视界');
     L.push('');
     L.push('## 差异统计');
     L.push('');

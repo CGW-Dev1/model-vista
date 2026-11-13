@@ -1,24 +1,36 @@
 {
-  "name": "pdmtool",
-  "productName": "PDM模型浏览器",
-  "version": "1.4.1",
-  "description": "PowerDesigner PDM 数据模型浏览工具 - 浏览、搜索、导出数据字典",
+  "name": "model-vista",
+  "productName": "ModelVista",
+  "version": "2.0.0",
+  "description": "ModelVista 模型视界 — 轻快、优雅的 PowerDesigner PDM 数据模型浏览器与数据字典工具",
   "main": "main.js",
-  "author": "PDMTOOL Studio",
+  "author": "ModelVista Studio",
   "license": "MIT",
+  "homepage": "https://github.com/CGW-Dev1/model-vista",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CGW-Dev1/model-vista.git"
+  },
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win"
+    "test:e2e": "electron . --e2e-test",
+    "dist": "electron-builder --win",
+    "dist:all": "electron-builder --win nsis portable zip"
   },
   "devDependencies": {
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.pdmtool.reader",
-    "productName": "PDM模型浏览器",
+    "appId": "com.modelvista.app",
+    "productName": "ModelVista",
+    "copyright": "Copyright © 2026 ModelVista Studio",
+    "asar": true,
+    "compression": "maximum",
+    "artifactName": "${productName}-${version}-Portable.${ext}",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "resources"
     },
     "files": [
       "main.js",
@@ -27,23 +39,43 @@
       "resources/icon.ico",
       "resources/icon.png"
     ],
+    "fileAssociations": [
+      {
+        "ext": "pdm",
+        "name": "PowerDesigner PDM Model",
+        "description": "PowerDesigner 数据模型文件",
+        "icon": "resources/icon.ico",
+        "role": "Editor"
+      }
+    ],
     "win": {
       "icon": "resources/icon.ico",
+      "executableName": "ModelVista",
+      "electronLanguages": ["zh-CN", "en-US"],
       "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
       ]
     },
     "nsis": {
+      "artifactName": "${productName}-${version}-Setup.${ext}",
       "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PDM模型浏览器",
+      "shortcutName": "ModelVista",
+      "uninstallDisplayName": "ModelVista 模型视界",
       "installerLanguages": ["zh_CN"],
-      "language": "2052"
+      "language": "2052",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}",
+      "requestExecutionLevel": "user"
     }
   }
 }

@@ -175,13 +175,14 @@
       ck(document.querySelector('#diff-result').textContent.length > 0, '对比执行出结果');
 
       /* 11. 主题切换 */
+      if (document.body.classList.contains('dark')) document.querySelector('#btn-theme').click();
       document.querySelector('#btn-theme').click();
       ck(document.body.classList.contains('dark'), '切换深色主题');
       document.querySelector('#btn-theme').click();
       ck(!document.body.classList.contains('dark'), '切回浅色主题');
 
       /* 12. 打开文件持久化 + 解析缓存（字符串体格式） */
-      ck(localStorage.getItem('pdmtool_open_files') !== null, '打开列表已持久化', localStorage.getItem('pdmtool_open_files'));
+      ck(localStorage.getItem('mv_open_files') !== null, '打开列表已持久化', localStorage.getItem('mv_open_files'));
       await sleep(800); /* 等待防抖缓存写入完成 */
       const cc = await window.native.loadCache(file);
       const ccOk = cc && cc.body && JSON.parse(cc.body).stats.tables === 7;
@@ -192,7 +193,7 @@
       const optCols = document.getElementById('opt-include-cols');
       ck(!!optAll && !!optCols && !!document.querySelector('#search-opts #opt-scope-all'), '勾选框位于搜索框后方');
       ck(!document.querySelector('#search-results .sr-options'), '下拉面板内已无勾选框');
-      localStorage.removeItem('pdmtool_search_opts');
+      localStorage.removeItem('mv_search_opts');
       T.applySearchOpts();
       const defs = T.getSearchOptsState();
       ck(defs.all === true && defs.cols === false, '默认搜索全部=开、包含字段=关', JSON.stringify(defs));
