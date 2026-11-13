@@ -60,10 +60,13 @@ app.whenReady().then(async () => {
       backgroundThrottling: false
     }
   });
-  if (process.env.SHOT_WELCOME === '1') {
-    try { await win.webContents.session.clearStorageData({ storages: ['localstorage'] }); } catch (e) { /* ignore */ }
-  }
   await win.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
+  if (process.env.SHOT_WELCOME === '1') {
+    try {
+      await win.webContents.executeJavaScript("localStorage.removeItem('mv_open_files')");
+      await win.reload();
+    } catch (e) { /* ignore */ }
+  }
   await sleep(800);
 
   const t = async (code) => { try { return await win.webContents.executeJavaScript(code); } catch (e) { return String(e); } };
