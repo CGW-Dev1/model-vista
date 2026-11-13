@@ -489,6 +489,19 @@ input[type="text"], .sel {
 input[type="text"]:focus, .sel:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
 .sel { cursor: pointer; }
 
+/* 搜索类输入框（覆盖通用 input 规则，保证图标与文字间距） */
+.search-box input {
+  height: 34px; padding: 0 76px 0 44px;
+  border: 1px solid transparent; border-radius: 10px;
+  background: var(--panel-3); font-size: 12.5px;
+}
+.sidebar-search-box input {
+  height: 30px; padding: 0 24px 0 30px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); font-size: 11.5px;
+}
+.em-search-row input { padding: 0 8px; }
+
 /* SQL */
 pre.sql {
   font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px;
