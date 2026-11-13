@@ -72,6 +72,11 @@
   }
 
   const activeModel = () => state.models.find(m => m.id === state.activeId);
+  /* 标签页与窗口标题优先显示文件名（去掉 .pdm），避免 PDM 内部模型名与文件名不一致 */
+  const displayNameOf = entry => {
+    if (!entry) return '';
+    return String(entry.name || '').replace(/\.pdm$/i, '') || entry.model && entry.model.name || entry.name || '';
+  };
 
   /* ---------------- 主题 ---------------- */
   function applyTheme(dark) {
@@ -254,7 +259,7 @@
       document.title = 'ModelVista 模型视界';
       return;
     }
-    const modelName = m.model.name || m.name;
+    const modelName = displayNameOf(m);
     let sub = '';
     const cur = state.current;
     if (cur && cur.kind === 'table') {
@@ -750,7 +755,7 @@
       if (!tab) {
         let title = '', subTitle = '', icon = 'table';
         if (kind === 'overview') {
-          title = m.model.name || m.name;
+          title = displayNameOf(m);
           subTitle = m.path;
           icon = 'overview';
         } else if (kind === 'diagram') {
@@ -968,7 +973,7 @@
       '<div class="panel-pad">' +
       '<div class="oh-title-row" style="margin-bottom:14px"><div>' +
       '<div class="oh-crumb">' + esc(m.path) + '</div>' +
-      '<div class="oh-title" style="font-size:20px">' + esc(model.name || m.name) + '</div>' +
+      '<div class="oh-title" style="font-size:20px">' + esc(displayNameOf(m)) + '</div>' +
       (model.comment ? '<div class="oh-comment">' + esc(model.comment) + '</div>' : '') +
       '</div></div>' +
       (s.tables === 0 && s.views === 0 ?
