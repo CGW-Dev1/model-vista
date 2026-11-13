@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('native', {
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   appInfo: () => ipcRenderer.invoke('app:info'),
   setTitle: (title) => ipcRenderer.invoke('app:setTitle', title),
+  showAppMenu: (key, x, y) => ipcRenderer.invoke('menu:popup', { key, x, y }),
   /* Electron 32+ 移除了渲染进程 File.path，必须经 webUtils 获取拖拽文件路径 */
   filePathForFile: (file) => {
     try { return webUtils.getPathForFile(file); } catch (e) { return ''; }

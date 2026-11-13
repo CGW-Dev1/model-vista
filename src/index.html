@@ -41,7 +41,7 @@
   </svg>
 
   <div id="app">
-    <!-- 顶部栏（同时作为无边框窗口的拖动区） -->
+    <!-- 标题栏（无边框窗口拖动区 + 菜单栏） -->
     <header class="titlebar">
       <div class="brand" title="ModelVista 模型视界 — PowerDesigner 数据模型浏览器">
         <img class="brand-logo" src="../resources/icon.png" alt="ModelVista" draggable="false" />
@@ -51,6 +51,22 @@
         </div>
       </div>
 
+      <nav class="menubar" id="menubar">
+        <button class="menu-item" data-menu="file">文件</button>
+        <button class="menu-item" data-menu="edit">编辑</button>
+        <button class="menu-item" data-menu="view">视图</button>
+        <button class="menu-item" data-menu="tools">工具</button>
+        <button class="menu-item" data-menu="help">帮助</button>
+      </nav>
+
+      <div class="titlebar-tail">
+        <span class="tb-dot"></span>
+        <span>PowerDesigner PDM 数据模型浏览器</span>
+      </div>
+    </header>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
       <button class="btn btn-primary btn-open" id="btn-open" title="打开 PDM 文件 (Ctrl+O)">
         <svg class="ic"><use href="#i-folder"/></svg>
         <span>打开文件</span>
@@ -117,7 +133,7 @@
           <svg class="ic"><use href="#i-help"/></svg>
         </button>
       </div>
-    </header>
+    </div>
 
     <!-- 主体 -->
     <div class="main">

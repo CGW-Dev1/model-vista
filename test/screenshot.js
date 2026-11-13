@@ -98,6 +98,20 @@ app.whenReady().then(async () => {
   win.webContents.invalidate();
   await sleep(250);
   fs.writeFileSync(OUT.replace('.png', '-table.png'), (await win.webContents.capturePage()).toPNG());
+  if (process.env.SHOT_RESIZE === '1') {
+    const res = await t(`(() => {
+      const th = document.querySelector('#col-table thead th:nth-child(2)');
+      const h = th && th.querySelector('.col-resizer');
+      if (!h) return 'no-handle';
+      const before = th.getBoundingClientRect().width;
+      const r = h.getBoundingClientRect();
+      h.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: r.left }));
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.left + 80 }));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      return before.toFixed(1) + ' -> ' + th.getBoundingClientRect().width.toFixed(1);
+    })()`);
+    console.log('[RESIZE] ' + res);
+  }
 
   /* 3. 搜索下拉 */
   await t(`(() => { const i = document.getElementById('global-search'); i.value = 'USER'; window.App.__test.doSearch('USER'); })()`);

@@ -810,6 +810,65 @@
     renderContent(opts);
   }
 
+  /* ---------------- 表格列宽拖拽 ---------------- */
+  function enhanceTables(scope) {
+    if (!scope) return;
+    scope.querySelectorAll('table.data-table').forEach(table => {
+      if (table.dataset.resizeReady === '1') return;
+      if (!table.clientWidth || table.clientWidth < 120) return;
+      const ths = Array.from(table.querySelectorAll('thead th'));
+      if (ths.length < 2) return;
+      table.dataset.resizeReady = '1';
+
+      const startFixedLayout = () => {
+        const raw = ths.map(th => th.getBoundingClientRect().width);
+        const sum = raw.reduce((a, b) => a + b, 0) || 1;
+        const target = table.clientWidth || sum;
+        const widths = raw.map(w => Math.max(44, Math.floor(w * target / sum)));
+        const diff = target - widths.reduce((a, b) => a + b, 0);
+        widths[widths.length - 1] = Math.max(44, widths[widths.length - 1] + diff);
+        table.style.tableLayout = 'fixed';
+        table.style.width = '100%';
+        ths.forEach((th, i) => { th.style.width = widths[i] + 'px'; });
+        return widths;
+      };
+
+      ths.forEach((th, i) => {
+        if (i >= ths.length - 1) return;
+        const handle = document.createElement('span');
+        handle.className = 'col-resizer';
+        th.appendChild(handle);
+        handle.addEventListener('mousedown', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          const widths = startFixedLayout();
+          const startX = e.clientX;
+          const a = widths[i], b = widths[i + 1];
+          document.body.classList.add('col-resizing');
+          const onMove = ev => {
+            let na = Math.max(44, a + (ev.clientX - startX));
+            let nb = Math.max(44, b - (na - a));
+            if (na - a > b - 44) { na = a + (b - 44); nb = 44; }
+            ths[i].style.width = na + 'px';
+            ths[i + 1].style.width = nb + 'px';
+          };
+          const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            document.body.classList.remove('col-resizing');
+          };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+        handle.addEventListener('dblclick', () => {
+          table.style.tableLayout = '';
+          table.style.width = '';
+          ths.forEach(x => { x.style.width = ''; });
+        });
+      });
+    });
+  }
+
   /* ---------------- 内容渲染 ---------------- */
   function renderContent(opts) {
     const box = $('#content');
@@ -817,6 +876,7 @@
     box.className = 'content';
     box.innerHTML = '';
     updateWindowTitle();
+    requestAnimationFrame(() => enhanceTables(box));
     const m = activeModel();
     if (!m || !state.current) { renderWelcome(box); return; }
     const kind = state.current.kind, id = state.current.id;
@@ -1094,6 +1154,7 @@
       if (!tab) return;
       box.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
       box.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== tab.dataset.tab));
+      requestAnimationFrame(() => enhanceTables(box));
     });
 
     /* 方言切换 */
@@ -1993,6 +2054,17 @@
     if (link) link.addEventListener('click', () => window.native.openExternal('https://github.com/CGW-Dev1/model-vista'));
   }
 
+  /* ---------------- 标题栏菜单 ---------------- */
+  function bindMenuBar() {
+    $$('.menu-item').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const r = btn.getBoundingClientRect();
+        window.native.showAppMenu(btn.dataset.menu, Math.round(r.left), Math.round(r.bottom + 2));
+      });
+    });
+  }
+
   /* ---------------- 工具栏按钮 ---------------- */
   function bindToolbar() {
     $('#btn-open').addEventListener('click', openDialog);
@@ -2045,6 +2117,7 @@
     bindDrop();
     bindKeys();
     bindToolbar();
+    bindMenuBar();
     bindAbout();
 
     window.App = {

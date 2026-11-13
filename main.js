@@ -126,7 +126,7 @@ function createWindow() {
     show: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: process.platform === 'win32'
-      ? { color: '#ffffff', symbolColor: '#51617a', height: 50 }
+      ? { color: '#ffffff', symbolColor: '#51617a', height: 44 }
       : false,
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'resources', 'icon.ico'),
@@ -285,6 +285,58 @@ function sendAction(action, arg) {
   if (mainWindow) mainWindow.webContents.send('menu-action', { action, arg });
 }
 
+/* 自定义标题栏菜单：点击后弹出原生菜单 */
+function popupTemplate(key) {
+  const recentItems = recentFiles.length
+    ? recentFiles.map(p => ({
+        label: p.length > 72 ? '…' + p.slice(-71) : p,
+        click: () => sendAction('menu:open-path', p)
+      }))
+    : [{ label: '（暂无记录）', enabled: false }];
+  if (key === 'file') return [
+    { label: '打开 PDM 文件…', accelerator: 'Ctrl+O', click: () => sendAction('menu:open-file') },
+    { label: '打开最近文件', submenu: [...recentItems, { type: 'separator' }, { label: '清除最近文件记录', click: () => { recentFiles = []; persistRecents(); buildMenu(); sendAction('menu:clear-recent'); } }] },
+    { type: 'separator' },
+    { label: '导出当前对象', submenu: [
+      { label: 'Word', click: () => sendAction('menu:export', 'word') },
+      { label: 'Excel', click: () => sendAction('menu:export', 'excel') },
+      { label: 'HTML', click: () => sendAction('menu:export', 'html') },
+      { label: 'Markdown', click: () => sendAction('menu:export', 'markdown') },
+      { label: 'CSV', click: () => sendAction('menu:export', 'csv') },
+      { label: 'PDF', click: () => sendAction('menu:export', 'pdf') }
+    ] },
+    { label: '导出整个模型…', click: () => sendAction('menu:export-all') },
+    { type: 'separator' },
+    { label: '退出', accelerator: 'Alt+F4', role: 'quit' }
+  ];
+  if (key === 'edit') return [
+    { role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' },
+    { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }
+  ];
+  if (key === 'view') return [
+    { label: '刷新视图', accelerator: 'F5', click: () => sendAction('menu:refresh') },
+    { type: 'separator' },
+    { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }, { role: 'resetZoom', label: '重置缩放' },
+    { type: 'separator' }, { role: 'toggleDevTools', label: '开发者工具' }
+  ];
+  if (key === 'tools') return [
+    { label: '生成建表 SQL', click: () => sendAction('menu:gen-sql') },
+    { label: '模型关系图', click: () => sendAction('menu:diagram') },
+    { label: '模型对比', click: () => sendAction('menu:diff') }
+  ];
+  return [
+    { label: '使用说明', click: () => sendAction('menu:help') },
+    { label: '关于 ModelVista', click: () => sendAction('menu:about') }
+  ];
+}
+
+ipcMain.handle('menu:popup', (_e, { key, x, y } = {}) => {
+  if (!mainWindow) return false;
+  const menu = Menu.buildFromTemplate(popupTemplate(key || 'help'));
+  menu.popup({ window: mainWindow, x: Math.round(x || 0), y: Math.round(y || 0) });
+  return true;
+});
+
 /* ---------------- IPC ---------------- */
 
 ipcMain.handle('dialog:openPdm', async () => {
@@ -423,7 +475,7 @@ ipcMain.on('theme:set', (_e, dark) => {
     mainWindow.setTitleBarOverlay({
       color: dark ? '#121a25' : '#ffffff',
       symbolColor: dark ? '#c6d2e2' : '#51617a',
-      height: 50
+      height: 44
     });
   } catch (err) { /* ignore */ }
 });
